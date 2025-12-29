@@ -1,0 +1,33 @@
+﻿# Quartus generated files
+db/
+incremental_db/
+output_files/*.jdi
+output_files/*.pin
+output_files/*.sld
+output_files/*.fit.summary
+output_files/*.map.summary
+*.qws
+
+# Qsys generated
+**/synthesis/
+**/simulation/
+*.sopcinfo
+
+# Nios II generated
+*_bsp/
+*.objdump
+*.elf
+*.map
+
+# HPS compiled
+sw/hps_app/*.o
+sw/hps_app/main
+
+# OS files
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# IDE
+.vscode/settings.json
