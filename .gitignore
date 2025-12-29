@@ -31,3 +31,26 @@ Thumbs.db
 
 # IDE
 .vscode/settings.json
+
+# Simulation results/outputs
+sim/results/
+*.wlf
+*.vcd
+transcript
+
+# Quartus additional
+*.qws
+*.bak
+*.orig
+**/.qsys_edit/
+
+# If hw/output/ is your output directory (not output_files/)
+hw/output/
+
+# Quartus/Qsys additional
+**/.qsys_edit/
+**/db/
+
+# Qsys generated files (keep .qsys, ignore generated output)
+# Qsys generated output folder (the .qsys file is the source)
+**/soc_system/
