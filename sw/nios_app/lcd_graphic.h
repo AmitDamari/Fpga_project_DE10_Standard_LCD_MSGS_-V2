@@ -1,31 +1,45 @@
-/* ========================================
- *
- * Copyright YOUR COMPANY, THE YEAR
- * All Rights Reserved
- * UNPUBLISHED, LICENSED SOFTWARE.
- *
- * CONFIDENTIAL AND PROPRIETARY INFORMATION
- * WHICH IS THE PROPERTY OF your company.
- *
- * ========================================
-*/
-//[] END OF FILE
-#ifndef _TERASIC_OS_INCLUDE_H_
-#define _TERASIC_OS_INCLUDE_H_
+// ============================================================================
+// lcd_graphic.h - Nios II Version
+// ============================================================================
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <sys/mman.h>
-#include <time.h> // for clock_gettime
-#include <math.h>
-#include "hwlib.h"
-#include "socal/socal.h"
-#include "socal/hps.h"
-#include "socal/alt_gpio.h"
-#include "socal/alt_spim.h" 
+#ifndef _INC_LCD_GRAPHIC_H_
+#define _INC_LCD_GRAPHIC_H_
 
+#include <stdint.h>    // For uint8_t
 
+#define SUPPORT_LCD_FONT
 
-#endif  //_TERASIC_OS_INCLUDE_H_
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+typedef struct {
+    int Width;
+    int Height;
+    int BitPerPixel;
+    int FrameSize;
+    uint8_t *pFrame;
+} LCD_CANVAS;
+
+#define LCD_WHITE   0x00
+#define LCD_BLACK   0xFF
+
+// Drawing functions
+void DRAW_Clear(LCD_CANVAS *pCanvas, int Color);
+void DRAW_Line(LCD_CANVAS *pCanvas, int X1, int Y1, int X2, int Y2, int Color);
+void DRAW_Pixel(LCD_CANVAS *pCanvas, int X, int Y, int Color);
+void DRAW_Rect(LCD_CANVAS *pCanvas, int X1, int Y1, int X2, int Y2, int Color);
+void DRAW_Circle(LCD_CANVAS *pCanvas, int x0, int y0, int Radius, int Color);
+void DRAW_Refresh(LCD_CANVAS *pCanvas);
+
+#ifdef SUPPORT_LCD_FONT
+#include "font.h"
+void DRAW_PrintChar(LCD_CANVAS *pCanvas, int X0, int Y0, char Text, int Color, FONT_TABLE *font_table);
+void DRAW_PrintString(LCD_CANVAS *pCanvas, int X0, int Y0, char *pText, int Color, FONT_TABLE *font_table);
+#endif
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif // _INC_LCD_GRAPHIC_H_

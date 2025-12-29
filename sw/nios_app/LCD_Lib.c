@@ -2,39 +2,22 @@
 // LCD_Lib.c - LCD Library for ST7565/NT7534 (Nios II Version)
 // ============================================================================
 
-#include <stdint.h>        // ADD: for uint8_t
+#include <stdint.h>
 #include "LCD_Lib.h"
 #include "LCD_Driver.h"
-#include "LCD_Hw.h"        // ADD: for LCDHW_Init, LCDHW_DelayMs
+#include "LCD_Hw.h"
 
 void LCD_Init(void) {
+    LCDHW_Init();
+    LCDHW_DelayMs(100);
     
-    // ADD: Hardware initialization first
-    LCDHW_Init();          // Initialize SPI, GPIO pins, and reset LCD
-    LCDHW_DelayMs(100);    // Wait for LCD to stabilize after reset
-    
-    // Common output state selection (~normal)
-    LCDDrv_SetOuputStatusSelect(false); // invert to match mechanism
-    
-    // Power control register (D2, D1, D0) = (follower, regulator, booster) = (1, 1, 1)
+    LCDDrv_SetOuputStatusSelect(false);
     LCDDrv_SetPowerControl(0x07);
-
-    // ADD: Recommended initialization sequence for ST7565
-    LCDHW_DelayMs(50);     // Wait for power to stabilize
-    
-    // Set display start line: at first line
+    LCDHW_DelayMs(50);
     LCDDrv_SetStartLine(0);
-
-    // Page address register set at page 0
     LCDDrv_SetPageAddr(0);
-    
-    // Column address counter set at address 0
     LCDDrv_SetColAddr(0);
-    
-    // Clear display before turning on (prevents garbage)
-    LCD_Clear();           // ADD: Clear before display on
-    
-    // Display on
+    LCD_Clear();
     LCDDrv_Display(true);
 }
 
@@ -48,7 +31,7 @@ void LCD_Clear(void) {
     for (Page = 0; Page < 8; Page++) {
         LCDDrv_SetPageAddr(Page);
         LCDDrv_SetColAddr(0);
-        for (i = 0; i < 132; i++) {    // 132 to cover full internal RAM
+        for (i = 0; i < 132; i++) {
             LCDDrv_WriteData(0x00);
         }    
     }
