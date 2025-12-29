@@ -30,10 +30,13 @@
 // ============================================================================
 
 #include <stdio.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdint.h>          // ADD THIS for uint8_t
-#include "system.h"  // Nios II system
+#include "hwlib.h"
 #include "lcd_graphic.h"
 #include "LCD_Lib.h"
 #include "font.h"

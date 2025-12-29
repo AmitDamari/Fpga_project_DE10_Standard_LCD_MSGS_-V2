@@ -12,9 +12,8 @@
 //[] END OF FILE
 #ifndef _NT7534_DRIVER_H_
 #define _NT7534_DRIVER_H_
-#include <stdint.h>
-#include <stdbool.h>
-#include "LCD_Hw.h"
+
+#include "terasic_os_includes.h"
 
 #define SPI_GRAPHIC_LCD
 
