@@ -72,7 +72,7 @@ int main() {
     
     LCDHW_Init(virtual_base);
     LCD_Init();
-    LCD_Clear();
+    LCD_GraphicClear();
     LCDHW_BackLight(true);
 
     State currentState = STATE_INIT;
@@ -96,7 +96,7 @@ int main() {
 
         switch (currentState) {
             case STATE_INIT:
-                LCD_Clear();
+                LCD_GraphicClear();
                 currentState = STATE_IDLE;
                 break;
 
@@ -106,7 +106,7 @@ int main() {
                 LCD_TextOut(0, 48, "  Press Button    ");
                 
                 if (btnPressed) {
-                    LCD_Clear();
+                    LCD_GraphicClear();
                     currentState = STATE_HOME;
                 }
                 break;
@@ -119,14 +119,14 @@ int main() {
 
                 if (btnPressed) {
                     if ((buttonState & 2) || (buttonState & 4)) {
-                        LCD_Clear();
+                        LCD_GraphicClear();
                         currentState = STATE_MESSAGE;
                         msgIndex = 0;
                     }
                 }
                 
                 if (difftime(time(NULL), lastActivityTime) > TIMEOUT_SECONDS) {
-                    LCD_Clear();
+                    LCD_GraphicClear();
                     currentState = STATE_IDLE;
                 }
                 break;
@@ -141,17 +141,17 @@ int main() {
                     if (buttonState & 2) {
                         msgIndex++;
                         if (msgIndex >= 18) msgIndex = 0;
-                        LCD_Clear();
+                        LCD_GraphicClear();
                     }
                     if (buttonState & 4) {
                         msgIndex--;
                         if (msgIndex < 0) msgIndex = 17;
-                        LCD_Clear();
+                        LCD_GraphicClear();
                     }
                 }
 
                 if (difftime(time(NULL), lastActivityTime) > TIMEOUT_SECONDS) {
-                    LCD_Clear();
+                    LCD_GraphicClear();
                     currentState = STATE_IDLE;
                 }
                 break;

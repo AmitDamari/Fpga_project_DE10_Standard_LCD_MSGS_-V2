@@ -1,6 +1,7 @@
 #ifndef MESSAGES_H
 #define MESSAGES_H
 
+// 18 Predefined Messages (4 lines max, approx 16 chars per line)
 static const char* MSG_LIST[18][4] = {
     {"System Check:", "All Systems", "Normal", "Status: OK"},
     {"Network:", "Connecting...", "IP: 192.168.1.5", "Signal: Strong"},
