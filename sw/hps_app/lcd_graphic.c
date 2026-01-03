@@ -95,8 +95,12 @@ void DRAW_PrintChar(LCD_CANVAS *pCanvas, int X0, int Y0, char Text, int Color, F
         for (p = 0; p < 8; p++) {
             pFont = font_table->pBitmap[(unsigned char)Text][y];
             for (x = 0; x < 16; x++) {
-                if (Mask & *pFont)
+                if (Mask & *pFont) {
                     DRAW_Pixel(pCanvas, X0 + x, Y0 + y * 8 + p, Color);
+                } else {
+                    // *** THIS LINE WAS MISSING - Clear background pixels ***
+                    DRAW_Pixel(pCanvas, X0 + x, Y0 + y * 8 + p, 0);
+                }
                 pFont++;
             }
             Mask <<= 1;
@@ -129,7 +133,10 @@ void LCD_TextOut(int x, int y, char *text) {
 }
 
 void LCD_GraphicClear(void) {
+    printf("    [LCD_GraphicClear] Clearing buffer...\n");
     InitCanvas();
     memset(gFrameBuffer, 0x00, sizeof(gFrameBuffer));
+    printf("    [LCD_GraphicClear] Buffer cleared, refreshing display...\n");
     DRAW_Refresh(&gCanvas);
+    printf("    [LCD_GraphicClear] Done.\n");
 }
