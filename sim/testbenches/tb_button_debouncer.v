@@ -97,7 +97,7 @@ module tb_button_debouncer;
     //=========================================================================
     
     initial begin
-        $dumpfile("sim/results/tb_button_debouncer.vcd");
+        $dumpfile("tb_button_debouncer.vcd");
         $dumpvars(0, tb_button_debouncer);
     end
     
