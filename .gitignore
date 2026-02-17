@@ -6,12 +6,14 @@ output_files/*.pin
 output_files/*.sld
 output_files/*.fit.summary
 output_files/*.map.summary
+output_files/*.sof
 *.qws
 
 # Qsys generated
 **/synthesis/
 **/simulation/
 *.sopcinfo
+*.html
 
 # Nios II generated
 *_bsp/
@@ -21,6 +23,7 @@ output_files/*.map.summary
 
 # HPS compiled
 sw/hps_app/*.o
+sw/hps_app/lcd_msg_app
 sw/hps_app/main
 
 # OS files
@@ -39,7 +42,6 @@ sim/results/
 transcript
 
 # Quartus additional
-*.qws
 *.bak
 *.orig
 **/.qsys_edit/
@@ -48,9 +50,7 @@ transcript
 hw/output/
 
 # Quartus/Qsys additional
-**/.qsys_edit/
 **/db/
 
-# Qsys generated files (keep .qsys, ignore generated output)
 # Qsys generated output folder (the .qsys file is the source)
 **/soc_system/

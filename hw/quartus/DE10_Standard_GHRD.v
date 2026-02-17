@@ -221,10 +221,26 @@ module DE10_Standard_GHRD(
   wire        hps_debug_reset;
   wire [27:0] stm_hw_events;
   wire        fpga_clk_50;
+
+  // --- Custom LCD Message Controller wires ---
+  wire [3:0]  ctrl_btn_pulse;          // Single-cycle button press events
+  wire [3:0]  ctrl_btn_debounced;      // Debounced button levels (active-HIGH)
+  wire        ctrl_timeout_flag;       // Idle timer expired
+  wire [3:0]  ctrl_seconds_remaining;  // BCD countdown for display
+  wire [6:0]  hex0_out, hex1_out, hex2_out, hex3_out, hex4_out, hex5_out;
+
 // connection of internal logics
   assign LEDR[9:1] = fpga_led_internal;
   assign stm_hw_events    = {{4{1'b0}}, SW, fpga_led_internal, fpga_debounced_buttons};
   assign fpga_clk_50=CLOCK_50;
+
+  // --- HEX display outputs ---
+  assign HEX0 = hex0_out;
+  assign HEX1 = hex1_out;
+  assign HEX2 = hex2_out;
+  assign HEX3 = hex3_out;
+  assign HEX4 = hex4_out;
+  assign HEX5 = hex5_out;
 //=======================================================
 //  Structural coding
 //=======================================================
@@ -326,6 +342,11 @@ soc_system u0 (
 		  .led_pio_external_connection_export    ( fpga_led_internal ),               //                               led_pio_external_connection.export                     
         .dipsw_pio_external_connection_export  ( SW ),                 //                               dipsw_pio_external_connection.export
         .button_pio_external_connection_export ( fpga_debounced_buttons ),              //                               button_pio_external_connection.export 
+		  // --- NEW: Custom LCD Message Controller PIOs ---
+		  // fsm_status_pio [3:0]=btn_debounced (level signals, stable for full press duration)
+		  // Note: btn_pulse is single-cycle (20ns) — too fast for HPS polling. Use debounced levels instead.
+		  .fsm_status_pio_external_connection_export   ({4'b0, ctrl_btn_debounced}),          // 8-bit @ 0x6000
+		  .timer_status_pio_external_connection_export  ({3'b0, ctrl_seconds_remaining, ctrl_timeout_flag}), // 8-bit @ 0x7000
 		  .hps_0_h2f_reset_reset_n               ( hps_fpga_reset_n ),                //                hps_0_h2f_reset.reset_n
 		  .hps_0_f2h_cold_reset_req_reset_n      (~hps_cold_reset ),      //       hps_0_f2h_cold_reset_req.reset_n
 		  .hps_0_f2h_debug_reset_req_reset_n     (~hps_debug_reset ),     //      hps_0_f2h_debug_reset_req.reset_n
@@ -403,6 +424,30 @@ else
 end
 
 assign LEDR[0]=led_level;
-endmodule
 
-  
+// ============================================================================
+// Custom LCD Message Controller
+// Integrates: debouncer (50ms) + edge detector + idle timer + HEX display
+// ============================================================================
+fpga_msg_controller #(
+    .CLK_FREQ_HZ (50_000_000),
+    .DEBOUNCE_MS (50),
+    .TIMEOUT_SEC (15),
+    .NUM_BUTTONS (4)
+) u_msg_ctrl (
+    .clk               (fpga_clk_50),
+    .rst_n             (hps_fpga_reset_n),
+    .key_in            (KEY),
+    .btn_pulse         (ctrl_btn_pulse),
+    .btn_debounced     (ctrl_btn_debounced),
+    .timeout_flag      (ctrl_timeout_flag),
+    .seconds_remaining (ctrl_seconds_remaining),
+    .hex0              (hex0_out),
+    .hex1              (hex1_out),
+    .hex2              (hex2_out),
+    .hex3              (hex3_out),
+    .hex4              (hex4_out),
+    .hex5              (hex5_out)
+);
+
+endmodule

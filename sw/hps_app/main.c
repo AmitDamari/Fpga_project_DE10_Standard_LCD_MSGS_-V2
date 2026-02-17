@@ -19,6 +19,8 @@
 #define HW_REGS_MASK          (HW_REGS_SPAN - 1)
 #define ALT_LWFPGASLVS_OFST   0xFF200000
 #define BUTTON_PIO_BASE       0x5000
+#define FSM_STATUS_PIO_BASE   0x6000   // NEW: button pulses + debounced levels
+#define TIMER_STATUS_PIO_BASE 0x7000   // NEW: timeout flag + seconds remaining
 #define BUTTON_MASK           0x0F
 #define TIMEOUT_SECONDS       15
 
@@ -29,9 +31,11 @@ typedef enum {
     STATE_MESSAGE
 } State;
 
-// Global variables (same as combined_test.c)
+// Global variables
 void *virtual_base = NULL;
 volatile uint32_t *button_addr = NULL;
+volatile uint32_t *fsm_status_addr = NULL;    // NEW: FPGA button status register
+volatile uint32_t *timer_status_addr = NULL;  // NEW: FPGA timer status register
 int fd = -1;
 
 int main() {
@@ -56,6 +60,15 @@ int main() {
     button_addr = (uint32_t *)(virtual_base + ((ALT_LWFPGASLVS_OFST + BUTTON_PIO_BASE) & HW_REGS_MASK));
     printf("  button_addr = %p\n", (void*)button_addr);
     
+    // NEW: Map FPGA status registers
+    printf("Setting up FPGA status registers...\n");
+    fsm_status_addr = (uint32_t *)(virtual_base +
+        ((ALT_LWFPGASLVS_OFST + FSM_STATUS_PIO_BASE) & HW_REGS_MASK));
+    timer_status_addr = (uint32_t *)(virtual_base +
+        ((ALT_LWFPGASLVS_OFST + TIMER_STATUS_PIO_BASE) & HW_REGS_MASK));
+    printf("  fsm_status_addr   = %p\n", (void*)fsm_status_addr);
+    printf("  timer_status_addr = %p\n", (void*)timer_status_addr);
+    
     printf("Initializing LCD...\n");
     LCDHW_Init(virtual_base);
     LCD_Init();
@@ -68,30 +81,36 @@ int main() {
     State lastState = STATE_MESSAGE;  // Different from initial, forces first draw
     int msgIndex = 0;
     int lastMsgIndex = -1;
-    int lastBtn = 0;
-    time_t lastActivityTime = time(NULL);
+    int lastBtn = 0;  // For software edge detection on debounced levels
     
     printf("\n=== LCD MESSAGE SYSTEM STARTED ===\n");
+    printf("Using FPGA hardware debouncing + idle timer.\n");
     printf("Press buttons to navigate.\n\n");
     
     // === MAIN LOOP ===
     while (1) {
-        // Read buttons (exactly like combined_test.c)
-        uint32_t raw = *button_addr;
-        int btn = (~raw) & BUTTON_MASK;
+        // ============================================================
+        // Read FPGA hardware status registers
+        // ============================================================
+        uint32_t fsm_status = *fsm_status_addr;
+        // [3:0] = btn_debounced: LEVEL signals (active-HIGH), stable for entire press
+        // These are NOT single-cycle pulses — they stay HIGH while button is held
+        int btn = fsm_status & 0x0F;
         
-        // Detect button press (transition from 0 to non-0)
+        uint32_t timer_status = *timer_status_addr;
+        bool timeout = timer_status & 1;             // [0] timeout flag (sticky until button press)
+        int secs_left = (timer_status >> 1) & 0x0F;  // [4:1] seconds remaining
+        
+        // Software edge detection: detect press transition (0→1)
+        // This is reliable because btn_debounced stays HIGH for the entire
+        // button press duration (typically >100ms), easily caught by 20ms polling
         bool btnPressed = (btn != 0 && lastBtn == 0);
         lastBtn = btn;
         
         if (btnPressed) {
-            lastActivityTime = time(NULL);
-            printf("Button pressed: %d (KEY0=%d KEY1=%d KEY2=%d KEY3=%d)\n",
-                   btn, (btn&1), (btn&2)>>1, (btn&4)>>2, (btn&8)>>3);
+            printf("FPGA btn_debounced: 0x%X (KEY0=%d KEY1=%d KEY2=%d KEY3=%d) secs_left=%d\n",
+                   btn, (btn&1), (btn&2)>>1, (btn&4)>>2, (btn&8)>>3, secs_left);
         }
-        
-        // Check for timeout
-        bool timeout = (difftime(time(NULL), lastActivityTime) > TIMEOUT_SECONDS);
         
         // === STATE MACHINE ===
         switch (currentState) {
@@ -186,7 +205,7 @@ int main() {
                 break;
         }
         
-        usleep(50000);  // 50ms delay
+        usleep(20000);  // 20ms polling interval (FPGA handles debouncing)
     }
     
     close(fd);
