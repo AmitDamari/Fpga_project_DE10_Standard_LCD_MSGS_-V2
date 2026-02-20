@@ -1,13 +1,34 @@
 ﻿# Quartus generated files
-db/
-incremental_db/
-output_files/*.jdi
-output_files/*.pin
-output_files/*.sld
-output_files/*.fit.summary
-output_files/*.map.summary
-output_files/*.sof
+**/db/
+**/incremental_db/
+**/output_files/*.jdi
+**/output_files/*.pin
+**/output_files/*.sld
+**/output_files/*.fit.summary
+**/output_files/*.fit.smsg
+**/output_files/*.map.summary
+**/output_files/*.map.rpt
+**/output_files/*.fit.rpt
+**/output_files/*.asm.rpt
+**/output_files/*.sta.rpt
+**/output_files/*.sta.summary
+**/output_files/*.flow.rpt
+**/output_files/*.done
+**/output_files/*.sof
 *.qws
+
+# Quartus misc generated
+**/c5_pin_model_dump.txt
+**/hps_sdram_p0_summary.csv
+**/hps_isw_handoff/
+sim/debug_tb.vvp
+
+# IDE
+.vs/
+
+# Planning/internal docs (not part of the design)
+ULTRA_*.md
+BUILD_IN_PROGRESS.md
 
 # Qsys generated
 **/synthesis/

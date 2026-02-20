@@ -54,14 +54,21 @@ module idle_timer #(
             // Active countdown
             if (tick_counter == ONE_SEC_TICKS - 1) begin
                 tick_counter <= {TICK_CNT_W{1'b0}};
-                if (sec_counter <= 1) begin
-                    // Timer expired (transition from 1→0 or already 0)
+                if (sec_counter == 0) begin
+                    // Safety guard: already at 0, ensure timeout stays asserted.
+                    // (Outer !timeout condition means we rarely enter here.)
+                    timeout           <= 1'b1;
+                    seconds_remaining <= 4'd0;
+                end else if (sec_counter == 1) begin
+                    // Last second: decrement to 0 AND assert timeout simultaneously.
+                    // This means timeout fires after exactly TIMEOUT_SEC seconds.
                     timeout           <= 1'b1;
                     sec_counter       <= {SEC_CNT_W{1'b0}};
                     seconds_remaining <= 4'd0;
                 end else begin
+                    // Normal countdown: decrement sec_counter and update display.
                     sec_counter       <= sec_counter - 1'b1;
-                    seconds_remaining <= sec_counter[3:0] - 4'd1;
+                    seconds_remaining <= sec_counter - 1'b1;
                 end
             end else begin
                 tick_counter <= tick_counter + 1'b1;

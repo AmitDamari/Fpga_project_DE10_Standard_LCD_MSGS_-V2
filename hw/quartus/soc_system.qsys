@@ -83,6 +83,48 @@
          type = "String";
       }
    }
+   element fsm_status_pio
+   {
+      datum _sortIndex
+      {
+         value = "8";
+         type = "int";
+      }
+   }
+   element fsm_status_pio.s1
+   {
+      datum _lockedAddress
+      {
+         value = "0";
+         type = "boolean";
+      }
+      datum baseAddress
+      {
+         value = "24576";
+         type = "String";
+      }
+   }
+   element timer_status_pio
+   {
+      datum _sortIndex
+      {
+         value = "9";
+         type = "int";
+      }
+   }
+   element timer_status_pio.s1
+   {
+      datum _lockedAddress
+      {
+         value = "0";
+         type = "boolean";
+      }
+      datum baseAddress
+      {
+         value = "28672";
+         type = "String";
+      }
+   }
    element f2sdram_only_master
    {
       datum _sortIndex
@@ -224,6 +266,16 @@
  <interface
    name="dipsw_pio_external_connection"
    internal="dipsw_pio.external_connection"
+   type="conduit"
+   dir="end" />
+ <interface
+   name="fsm_status_pio_external_connection"
+   internal="fsm_status_pio.external_connection"
+   type="conduit"
+   dir="end" />
+ <interface
+   name="timer_status_pio_external_connection"
+   internal="timer_status_pio.external_connection"
    type="conduit"
    dir="end" />
  <interface
@@ -907,6 +959,34 @@
   <parameter name="simDrivenValue" value="0" />
   <parameter name="width" value="10" />
  </module>
+ <module name="fsm_status_pio" kind="altera_avalon_pio" version="21.1" enabled="1">
+  <parameter name="bitClearingEdgeCapReg" value="false" />
+  <parameter name="bitModifyingOutReg" value="false" />
+  <parameter name="captureEdge" value="false" />
+  <parameter name="clockRate" value="50000000" />
+  <parameter name="direction" value="Input" />
+  <parameter name="edgeType" value="RISING" />
+  <parameter name="generateIRQ" value="false" />
+  <parameter name="irqType" value="LEVEL" />
+  <parameter name="resetValue" value="0" />
+  <parameter name="simDoTestBenchWiring" value="false" />
+  <parameter name="simDrivenValue" value="0" />
+  <parameter name="width" value="8" />
+ </module>
+ <module name="timer_status_pio" kind="altera_avalon_pio" version="21.1" enabled="1">
+  <parameter name="bitClearingEdgeCapReg" value="false" />
+  <parameter name="bitModifyingOutReg" value="false" />
+  <parameter name="captureEdge" value="false" />
+  <parameter name="clockRate" value="50000000" />
+  <parameter name="direction" value="Input" />
+  <parameter name="edgeType" value="RISING" />
+  <parameter name="generateIRQ" value="false" />
+  <parameter name="irqType" value="LEVEL" />
+  <parameter name="resetValue" value="0" />
+  <parameter name="simDoTestBenchWiring" value="false" />
+  <parameter name="simDrivenValue" value="0" />
+  <parameter name="width" value="8" />
+ </module>
  <module
    name="mm_bridge_0"
    kind="altera_avalon_mm_bridge"
@@ -1064,6 +1144,24 @@
   <parameter name="defaultConnection" value="false" />
  </connection>
  <connection
+   kind="avalon"
+   version="21.1"
+   start="mm_bridge_0.m0"
+   end="fsm_status_pio.s1">
+  <parameter name="arbitrationPriority" value="1" />
+  <parameter name="baseAddress" value="0x6000" />
+  <parameter name="defaultConnection" value="false" />
+ </connection>
+ <connection
+   kind="avalon"
+   version="21.1"
+   start="mm_bridge_0.m0"
+   end="timer_status_pio.s1">
+  <parameter name="arbitrationPriority" value="1" />
+  <parameter name="baseAddress" value="0x7000" />
+  <parameter name="defaultConnection" value="false" />
+ </connection>
+ <connection
    kind="clock"
    version="21.1"
    start="clk_0.clk"
@@ -1077,6 +1175,8 @@
    end="fpga_only_master.clk" />
  <connection kind="clock" version="21.1" start="clk_0.clk" end="dipsw_pio.clk" />
  <connection kind="clock" version="21.1" start="clk_0.clk" end="button_pio.clk" />
+ <connection kind="clock" version="21.1" start="clk_0.clk" end="fsm_status_pio.clk" />
+ <connection kind="clock" version="21.1" start="clk_0.clk" end="timer_status_pio.clk" />
  <connection kind="clock" version="21.1" start="clk_0.clk" end="jtag_uart.clk" />
  <connection kind="clock" version="21.1" start="clk_0.clk" end="ILC.clk" />
  <connection
@@ -1170,6 +1270,16 @@
    version="21.1"
    start="clk_0.clk_reset"
    end="button_pio.reset" />
+ <connection
+   kind="reset"
+   version="21.1"
+   start="clk_0.clk_reset"
+   end="fsm_status_pio.reset" />
+ <connection
+   kind="reset"
+   version="21.1"
+   start="clk_0.clk_reset"
+   end="timer_status_pio.reset" />
  <connection
    kind="reset"
    version="21.1"

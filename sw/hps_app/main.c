@@ -113,6 +113,9 @@ int main() {
         }
         
         // === STATE MACHINE ===
+        // IMPORTANT: use a local copy of btnPressed so we consume it once per loop.
+        // After the switch, clear it to prevent double-firing across states.
+        bool btnConsumed = false;
         switch (currentState) {
             
             case STATE_IDLE:
@@ -128,9 +131,10 @@ int main() {
                 }
                 
                 // Any button press goes to HOME
-                if (btnPressed) {
+                if (btnPressed && !btnConsumed) {
                     printf("Transition: IDLE -> HOME\n");
                     currentState = STATE_HOME;
+                    btnConsumed = true;
                 }
                 break;
                 
@@ -147,16 +151,18 @@ int main() {
                 }
                 
                 // KEY0 (bit 0) = back to IDLE
-                if (btnPressed && (btn & 1)) {
+                if (btnPressed && !btnConsumed && (btn & 1)) {
                     printf("Transition: HOME -> IDLE\n");
                     currentState = STATE_IDLE;
+                    btnConsumed = true;
                 }
                 // KEY1 (bit 1) or KEY2 (bit 2) = go to messages
-                if (btnPressed && ((btn & 2) || (btn & 4))) {
+                if (btnPressed && !btnConsumed && ((btn & 2) || (btn & 4))) {
                     printf("Transition: HOME -> MESSAGE\n");
                     currentState = STATE_MESSAGE;
                     msgIndex = 0;
                     lastMsgIndex = -1;  // Force redraw
+                    btnConsumed = true;
                 }
                 
                 // Timeout returns to IDLE
@@ -180,21 +186,24 @@ int main() {
                 }
                 
                 // KEY0 (bit 0) = back to HOME
-                if (btnPressed && (btn & 1)) {
+                if (btnPressed && !btnConsumed && (btn & 1)) {
                     printf("Transition: MESSAGE -> HOME\n");
                     currentState = STATE_HOME;
+                    btnConsumed = true;
                 }
                 // KEY1 (bit 1) = next message
-                if (btnPressed && (btn & 2)) {
+                if (btnPressed && !btnConsumed && (btn & 2)) {
                     msgIndex++;
                     if (msgIndex >= 18) msgIndex = 0;
                     printf("Next message: %d\n", msgIndex);
+                    btnConsumed = true;
                 }
                 // KEY2 (bit 2) = previous message
-                if (btnPressed && (btn & 4)) {
+                if (btnPressed && !btnConsumed && (btn & 4)) {
                     msgIndex--;
                     if (msgIndex < 0) msgIndex = 17;
                     printf("Previous message: %d\n", msgIndex);
+                    btnConsumed = true;
                 }
                 
                 // Timeout returns to IDLE

@@ -1010,11 +1010,25 @@ set_global_assignment -name MAX_CORE_JUNCTION_TEMP 85
 set_global_assignment -name POWER_PRESET_COOLING_SOLUTION "23 MM HEAT SINK WITH 200 LFPM AIRFLOW"
 set_global_assignment -name POWER_BOARD_THERMAL_MODEL "NONE (CONSERVATIVE)"
 set_global_assignment -name SDC_FILE DE10_Standard_GHRD.sdc
+set_global_assignment -name VERILOG_FILE DE10_Standard_GHRD.v
 set_global_assignment -name VERILOG_FILE ip/debounce/debounce.v
 set_global_assignment -name QIP_FILE ip/altsource_probe/hps_reset.qip
 set_global_assignment -name VERILOG_FILE ip/edge_detect/altera_edge_detector.v
-set_global_assignment -name VERILOG_FILE ip/intr_capturer/intr_capturer.v
+# ip/intr_capturer/intr_capturer.v removed — file missing and module never instantiated
 set_global_assignment -name QIP_FILE soc_system/synthesis/soc_system.qip
+
+# --- Fix: Missing Qsys-generated error adapter submodules ---
+set_global_assignment -name SYSTEMVERILOG_FILE soc_system/synthesis/submodules/soc_system_mm_interconnect_0_avalon_st_adapter_error_adapter_0.sv
+set_global_assignment -name SYSTEMVERILOG_FILE soc_system/synthesis/submodules/soc_system_mm_interconnect_3_avalon_st_adapter_error_adapter_0.sv
+
+# --- Fix: Search paths for HPS SDRAM memory controller IP atoms ---
+set_global_assignment -name SEARCH_PATH "C:/intelFPGA_lite/21.1/ip/altera/alt_mem_if/alt_mem_if_controllers/altera_mem_if_hard_memory_controller"
+set_global_assignment -name SEARCH_PATH "C:/intelFPGA_lite/21.1/ip/altera/alt_mem_if/altera_mem_if_oct"
+set_global_assignment -name SEARCH_PATH "C:/intelFPGA_lite/21.1/ip/altera/alt_mem_if/altera_mem_if_dll"
+set_global_assignment -name SYSTEMVERILOG_FILE "C:/intelFPGA_lite/21.1/ip/altera/alt_mem_if/alt_mem_if_controllers/altera_mem_if_hard_memory_controller/altera_mem_if_hard_memory_controller_top_cyclonev.sv"
+set_global_assignment -name SYSTEMVERILOG_FILE "C:/intelFPGA_lite/21.1/ip/altera/alt_mem_if/altera_mem_if_oct/altera_mem_if_oct_cyclonev.sv"
+set_global_assignment -name SYSTEMVERILOG_FILE "C:/intelFPGA_lite/21.1/ip/altera/alt_mem_if/altera_mem_if_dll/altera_mem_if_dll_cyclonev.sv"
+
 set_global_assignment -name VERILOG_FILE ../../rtl/button_debouncer.v
 set_global_assignment -name VERILOG_FILE ../../rtl/button_edge_detector.v
 set_global_assignment -name VERILOG_FILE ../../rtl/idle_timer.v

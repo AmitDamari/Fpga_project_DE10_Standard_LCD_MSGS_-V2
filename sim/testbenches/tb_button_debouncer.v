@@ -52,8 +52,9 @@ module tb_button_debouncer;
     //=========================================================================
     
     button_debouncer #(
-        .CLK_FREQ    (CLK_FREQ),
-        .DEBOUNCE_MS (DEBOUNCE_MS)
+        .CLK_FREQ_HZ (CLK_FREQ),    // Correct parameter name in module is CLK_FREQ_HZ
+        .DEBOUNCE_MS (DEBOUNCE_MS),
+        .NUM_BUTTONS (1)             // Single-channel matches 1-bit btn_in/btn_out signals
     ) dut (
         .clk     (clk),
         .rst_n   (rst_n),

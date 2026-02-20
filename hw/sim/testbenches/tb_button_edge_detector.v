@@ -72,6 +72,16 @@ module tb_button_edge_detector;
     // ----------------------------------------------------------------
     // Stimulus
     // ----------------------------------------------------------------
+    // TIMING RULE for this TB:
+    //   btn_pulse is a COMBINATIONAL output: btn_debounced & ~btn_prev
+    //   btn_prev is a registered signal updated via NBA at posedge clk.
+    //
+    //   SAFE PATTERN: always use "@(posedge clk); #1;" together.
+    //   The #1 delay (1 ns) advances past the NBA update region, so
+    //   btn_prev is fully settled before we set or check any signal.
+    //   Input changes made in this settled zone are captured at the
+    //   NEXT posedge cleanly, with no race conditions.
+    // ----------------------------------------------------------------
     initial begin
         $display("=== TB: button_edge_detector ===");
 
@@ -79,21 +89,24 @@ module tb_button_edge_detector;
         rst_n = 1'b0;
         repeat (3) @(posedge clk);
         rst_n = 1'b1;
-        @(posedge clk);
+        @(posedge clk); #1;  // Settle NBA (btn_prev→0), now in safe zone
 
         // ============================================================
         // TEST 1: Rising edge on button 0 → single pulse
+        //   Pattern: set input → #1 (delta flush) → check → @posedge (capture)
+        //   The #1 is required because 'assign btn_pulse = btn_debounced & ~btn_prev'
+        //   is a continuous assignment that re-evaluates in the NEXT delta cycle
+        //   after btn_debounced changes. Without #1, btn_pulse is still 0.
         // ============================================================
         btn_debounced[0] = 1'b1;
-        @(posedge clk);  // Pulse appears after this edge
-        #1;              // Small delay to let combinational settle
+        #1;  // Let continuous assignment delta-propagate
         check(4'b0001, "Rising edge BTN0");
 
         // ============================================================
         // TEST 2: Held button — next cycle should show NO pulse
+        //   @posedge: btn_prev captures btn_debounced=1 → pulse disappears
         // ============================================================
-        @(posedge clk);
-        #1;
+        @(posedge clk); #1;
         check(4'b0000, "Held BTN0 no pulse");
 
         // ============================================================
@@ -105,57 +118,60 @@ module tb_button_edge_detector;
 
         // ============================================================
         // TEST 4: Release button 0
+        //   Falling edge: no pulse (edge detector only detects rising)
         // ============================================================
         btn_debounced[0] = 1'b0;
-        @(posedge clk);
-        #1;
+        @(posedge clk); #1;  // btn_prev captures 0 → settled
         check(4'b0000, "Release BTN0");
 
         // ============================================================
         // TEST 5: Re-press → second pulse
+        //   btn_prev=0 (settled after Test 4 posedge + #1)
         // ============================================================
-        @(posedge clk);
         btn_debounced[0] = 1'b1;
-        @(posedge clk);
-        #1;
+        #1;  // Delta flush for continuous assign
         check(4'b0001, "Re-press BTN0");
-
-        btn_debounced[0] = 1'b0;
-        @(posedge clk);
-        #1;
 
         // ============================================================
         // TEST 6: Multi-button simultaneous rising edge
+        //   Release BTN0, let posedge settle btn_prev=0, then press multi
         // ============================================================
-        btn_debounced = 4'b0000;
-        @(posedge clk);
+        @(posedge clk); #1;   // btn_prev captures 1 (Re-press)
+        btn_debounced[0] = 1'b0;  // Release BTN0
+        @(posedge clk); #1;   // btn_prev captures 0 → settled
 
-        btn_debounced = 4'b1010;  // BTN1 + BTN3 pressed
-        @(posedge clk);
-        #1;
+        btn_debounced = 4'b1010;  // BTN1+BTN3: btn_prev=0 → pulse=1010
+        #1;  // Delta flush
         check(4'b1010, "Multi BTN1+BTN3");
 
-        @(posedge clk);
-        #1;
+        // ============================================================
+        // TEST 7: Multi held — no pulse
+        // ============================================================
+        @(posedge clk); #1;   // btn_prev captures 1010
         check(4'b0000, "Multi held no pulse");
 
         // ============================================================
-        // TEST 7: Reset during active button
+        // TEST 8: BTN2 rising edge during multi-hold state
+        //   btn_prev=1010. Set btn_debounced=0100 → pulse = 0100 & ~1010
+        //                                                  = 0100 & 0101 = 0100
         // ============================================================
-        btn_debounced = 4'b0100;  // BTN2 pressed
-        @(posedge clk);
-        #1;
-        // Should see pulse
+        btn_debounced = 4'b0100;
+        #1;  // Delta flush
         check(4'b0100, "BTN2 pulse before reset");
 
-        rst_n = 1'b0;
-        @(posedge clk);
-        #1;
+        // ============================================================
+        // TEST 9: Reset clears btn_prev
+        //   Release all buttons, apply async reset → btn_prev→0 immediately
+        // ============================================================
+        @(posedge clk); #1;   // btn_prev captures 0100
+        btn_debounced = 4'b0000;  // Release all
+        rst_n = 1'b0;             // Async reset → btn_prev→0
+        #1;  // Let async reset propagate
         check(4'b0000, "Reset clears pulse");
 
+        @(posedge clk); #1;
         rst_n = 1'b1;
-        btn_debounced = 4'b0000;
-        @(posedge clk);
+        @(posedge clk); #1;
 
         // ============================================================
         // Summary

@@ -141,9 +141,9 @@ module tb_clock_divider();
         // =====================================================================
         // Verification
         // =====================================================================
-        $display("\n" + "="*60);
+        $display("\n============================================================");
         $display("SIMULATION COMPLETE - VERIFICATION RESULTS");
-        $display("="*60);
+        $display("============================================================");
         
         // Check tick counts
         $display("\nTick Counts:");
@@ -171,13 +171,13 @@ module tb_clock_divider();
         // Verified in initial simulation phase
         
         // Final result
-        $display("\n" + "="*60);
+        $display("\n============================================================");
         if (test_passed) begin
-            $display("✅ ALL TESTS PASSED");
+            $display("[PASS] ALL TESTS PASSED");
         end else begin
-            $display("❌ SOME TESTS FAILED");
+            $display("[FAIL] SOME TESTS FAILED");
         end
-        $display("="*60);
+        $display("============================================================");
         
         $finish;
     end

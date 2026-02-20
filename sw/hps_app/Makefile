@@ -4,10 +4,10 @@
 # To cross-compile, run: make CC=arm-linux-gnueabihf-gcc
 CC ?= gcc
 CFLAGS = -g -Wall -O2
-LDFLAGS = 
+LDFLAGS = -lrt
 
 # Source files
-SRCS = main.c LCD_Hw.c LCD_Lib.c lcd_graphic.c font.c
+SRCS = main.c LCD_Hw.c LCD_Driver.c LCD_Lib.c lcd_graphic.c font.c terasic_lib.c
 OBJS = $(SRCS:.c=.o)
 TARGET = lcd_msg_app
 
