@@ -22,7 +22,7 @@ The pushbuttons (KEY[0-3]) are connected to:
 ## Decision
 Use **hybrid FPGA-HPS architecture**:
 1. FPGA: Handle button debouncing, expose state via LW H2F bridge
-2. HPS: Run FSM, control LCD using original Terasic drivers
+2. HPS: Render LCD using original Terasic drivers based on FPGA-exported FSM/timer status
 
 ## Consequences
 ### Positive

@@ -88,3 +88,22 @@ if ($qsys -like "*fsm_status_pio*" -and $qsys -like "*timer_status_pio*") {
 
 Write-Host "`n====== VERIFICATION COMPLETE ======`n" -ForegroundColor Cyan
 Write-Host "See ULTRA_PLAN_BUILD_GUIDE.md for complete build instructions" -ForegroundColor Cyan
+
+# Check 8: Simulation preflight + canonical regression
+Write-Host "`n[**] CHECKING: Simulation preflight + canonical regression" -ForegroundColor Yellow
+if ((Test-Path "sim/check_sim_env.ps1") -and (Test-Path "sim/run_all_sim.ps1")) {
+    & .\sim\check_sim_env.ps1
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "  [OK] Preflight passed; running canonical simulation suites..." -ForegroundColor Green
+        & .\sim\run_all_sim.ps1
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "  [OK] Canonical simulation regression passed" -ForegroundColor Green
+        } else {
+            Write-Host "  [FAIL] Canonical simulation regression failed" -ForegroundColor Red
+        }
+    } else {
+        Write-Host "  [WARN] Preflight failed; simulation regression skipped" -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "  [WARN] Simulation scripts not found; skipping" -ForegroundColor Yellow
+}

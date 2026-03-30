@@ -35,7 +35,15 @@ module tb_fpga_msg_controller;
     wire [NUM_BUTTONS-1:0] btn_debounced;
     wire                   timeout_flag;
     wire [3:0]             seconds_remaining;
+    wire [2:0]             fsm_state;
+    wire [4:0]             fsm_msg_index;
     wire [6:0]             hex0, hex1, hex2, hex3, hex4, hex5;
+
+    localparam [2:0] S_INIT  = 3'd0;
+    localparam [2:0] S_IDLE  = 3'd1;
+    localparam [2:0] S_HOME  = 3'd2;
+    localparam [2:0] S_MSG   = 3'd3;
+    localparam [2:0] S_SLEEP = 3'd4;
 
     // ----------------------------------------------------------------
     // DUT
@@ -53,6 +61,8 @@ module tb_fpga_msg_controller;
         .btn_debounced     (btn_debounced),
         .timeout_flag      (timeout_flag),
         .seconds_remaining (seconds_remaining),
+        .fsm_state         (fsm_state),
+        .fsm_msg_index     (fsm_msg_index),
         .hex0              (hex0),
         .hex1              (hex1),
         .hex2              (hex2),
@@ -73,6 +83,8 @@ module tb_fpga_msg_controller;
     integer pass_count = 0;
     integer fail_count = 0;
     integer test_num   = 0;
+    reg [NUM_BUTTONS-1:0] btn_pulse_prev;
+    integer pulse_width_errors = 0;
 
     task check_bool;
         input actual;
@@ -92,6 +104,31 @@ module tb_fpga_msg_controller;
         end
     endtask
 
+    function [6:0] seven_seg;
+        input [3:0] val;
+        begin
+            case (val)
+                4'h0: seven_seg = 7'b1000000;
+                4'h1: seven_seg = 7'b1111001;
+                4'h2: seven_seg = 7'b0100100;
+                4'h3: seven_seg = 7'b0110000;
+                4'h4: seven_seg = 7'b0011001;
+                4'h5: seven_seg = 7'b0010010;
+                4'h6: seven_seg = 7'b0000010;
+                4'h7: seven_seg = 7'b1111000;
+                4'h8: seven_seg = 7'b0000000;
+                4'h9: seven_seg = 7'b0010000;
+                4'hA: seven_seg = 7'b0001000;
+                4'hB: seven_seg = 7'b0000011;
+                4'hC: seven_seg = 7'b1000110;
+                4'hD: seven_seg = 7'b0100001;
+                4'hE: seven_seg = 7'b0000110;
+                4'hF: seven_seg = 7'b0001110;
+                default: seven_seg = 7'b1111111;
+            endcase
+        end
+    endfunction
+
     // ----------------------------------------------------------------
     // Stimulus
     // ----------------------------------------------------------------
@@ -102,6 +139,7 @@ module tb_fpga_msg_controller;
 
         key_in = 4'b1111;  // All released (active-LOW)
         rst_n  = 1'b0;
+        btn_pulse_prev = {NUM_BUTTONS{1'b0}};
 
         repeat (5) @(posedge clk);
         rst_n = 1'b1;
@@ -113,6 +151,10 @@ module tb_fpga_msg_controller;
         check_bool(|btn_debounced, 1'b0, "Init debounced=0");
         check_bool(|btn_pulse,     1'b0, "Init pulse=0");
         check_bool(timeout_flag,   1'b0, "Init no timeout");
+        check_bool(hex0 == seven_seg(4'd3), 1'b1, "Init HEX0 exact");
+        check_bool(hex1 == seven_seg(4'hF), 1'b1, "Init HEX1 exact");
+        check_bool(hex2 == seven_seg(4'd0), 1'b1, "Init HEX2 exact");
+        check_bool(fsm_state == S_IDLE, 1'b1, "Init FSM in IDLE");
 
         // ============================================================
         // TEST 2: Press KEY0 — debounce + edge detect
@@ -123,6 +165,8 @@ module tb_fpga_msg_controller;
         repeat (1010) @(posedge clk);
 
         check_bool(btn_debounced[0], 1'b1, "KEY0 debounced");
+        check_bool(hex1 == seven_seg(4'd0), 1'b1, "HEX1 shows last key=0");
+        check_bool(fsm_state == S_HOME, 1'b1, "FSM IDLE->HOME on first press");
 
         // The pulse should have appeared about 1002 cycles after press
         // By now it's gone — check that pulse is not stuck HIGH
@@ -134,6 +178,7 @@ module tb_fpga_msg_controller;
         key_in[0] = 1'b1;  // Release
         repeat (1010) @(posedge clk);
         check_bool(btn_debounced[0], 1'b0, "KEY0 released");
+        check_bool(fsm_state == S_HOME, 1'b1, "FSM remains HOME after release");
 
         // ============================================================
         // TEST 4: Timer countdown
@@ -151,9 +196,10 @@ module tb_fpga_msg_controller;
 
         repeat (CLK_FREQ_HZ) @(posedge clk);
         $display("  seconds_remaining=%0d (expect 0)", seconds_remaining);
-
-        repeat (CLK_FREQ_HZ) @(posedge clk);
         check_bool(timeout_flag, 1'b1, "Timeout after countdown");
+        check_bool(hex2 == seven_seg(4'd1), 1'b1, "HEX2 timeout exact");
+        check_bool(hex0 == seven_seg(4'd0), 1'b1, "HEX0 zero exact on timeout");
+        check_bool(fsm_state == S_SLEEP, 1'b1, "FSM HOME->SLEEP on timeout");
 
         // ============================================================
         // TEST 5: Press KEY1 — resets timer
@@ -162,17 +208,49 @@ module tb_fpga_msg_controller;
         repeat (1010) @(posedge clk);
 
         check_bool(timeout_flag, 1'b0, "Timer reset by KEY1");
-        $display("  seconds_remaining=%0d (expect 3)", seconds_remaining);
+        $display("  seconds_remaining=%0d (expect 2)", seconds_remaining);
+        check_bool(hex1 == seven_seg(4'd1), 1'b1, "HEX1 shows last key=1");
+        check_bool(hex2 == seven_seg(4'd0), 1'b1, "HEX2 running exact");
+        check_bool(fsm_state == S_IDLE, 1'b1, "FSM SLEEP->IDLE on wake press");
 
         key_in[1] = 1'b1;  // Release KEY1
         repeat (1010) @(posedge clk);
 
         // ============================================================
-        // TEST 6: HEX display — check hex0 is not all-blank
-        //   After reset by KEY1, seconds_remaining=3
-        //   seven_seg(3) = 7'b0110000
+        // TEST 6: HEX display exact values while running
         // ============================================================
-        check_bool(hex0 != 7'b1111111, 1'b1, "HEX0 not blank");
+        check_bool(hex0 == seven_seg(4'd1), 1'b1, "HEX0 exact one second after KEY1 reset");
+        check_bool(hex3 == seven_seg(4'd0), 1'b1, "HEX3 reserved exact");
+        check_bool(hex4 == seven_seg(4'd0), 1'b1, "HEX4 reserved exact");
+        check_bool(hex5 == seven_seg(4'd0), 1'b1, "HEX5 reserved exact");
+
+        check_bool(pulse_width_errors == 0, 1'b1, "All pulses are single-cycle width");
+
+        // ============================================================
+        // TEST 7: Integrated FSM path (IDLE->HOME->MSG + index + timeout)
+        // ============================================================
+        key_in[2] = 1'b0;  // Press KEY2: IDLE -> HOME
+        repeat (1010) @(posedge clk);
+        check_bool(fsm_state == S_HOME, 1'b1, "FSM IDLE->HOME via KEY2");
+        key_in[2] = 1'b1;
+        repeat (1010) @(posedge clk);
+
+        key_in[2] = 1'b0;  // Press KEY2: HOME -> MSG
+        repeat (1010) @(posedge clk);
+        check_bool(fsm_state == S_MSG, 1'b1, "FSM HOME->MSG via KEY2");
+        check_bool(fsm_msg_index == 5'd0, 1'b1, "FSM index reset to 0 on MSG entry");
+        key_in[2] = 1'b1;
+        repeat (1010) @(posedge clk);
+
+        key_in[1] = 1'b0;  // Press KEY1: MSG index ++
+        repeat (1010) @(posedge clk);
+        check_bool(fsm_state == S_MSG, 1'b1, "FSM stays in MSG on KEY1 next");
+        check_bool(fsm_msg_index == 5'd1, 1'b1, "FSM index increments in MSG");
+        key_in[1] = 1'b1;
+        repeat (1010) @(posedge clk);
+
+        repeat (3*CLK_FREQ_HZ + 20) @(posedge clk); // timeout in MSG -> SLEEP
+        check_bool(fsm_state == S_SLEEP, 1'b1, "FSM MSG->SLEEP on timeout");
 
         // ============================================================
         // Summary
@@ -192,6 +270,15 @@ module tb_fpga_msg_controller;
     // Monitor key signals
     // ----------------------------------------------------------------
     always @(posedge clk) begin
+        if (rst_n) begin
+            if ((btn_pulse_prev & btn_pulse) != {NUM_BUTTONS{1'b0}}) begin
+                pulse_width_errors = pulse_width_errors + 1;
+                $display("  [PULSE WIDTH ERROR] btn_pulse held >1 cycle: prev=%b curr=%b @ %0t",
+                         btn_pulse_prev, btn_pulse, $time);
+            end
+        end
+        btn_pulse_prev <= btn_pulse;
+
         if (|btn_pulse)
             $display("  [%0t] btn_pulse=%b", $time, btn_pulse);
     end

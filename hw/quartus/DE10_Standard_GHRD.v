@@ -227,6 +227,8 @@ module DE10_Standard_GHRD(
   wire [3:0]  ctrl_btn_debounced;      // Debounced button levels (active-HIGH)
   wire        ctrl_timeout_flag;       // Idle timer expired
   wire [3:0]  ctrl_seconds_remaining;  // BCD countdown for display
+  wire [2:0]  ctrl_fsm_state;          // Verilog UI FSM state
+  wire [4:0]  ctrl_fsm_msg_index;      // Verilog UI FSM message index
   wire [6:0]  hex0_out, hex1_out, hex2_out, hex3_out, hex4_out, hex5_out;
 
 // connection of internal logics
@@ -342,10 +344,10 @@ soc_system u0 (
 		  .led_pio_external_connection_export    ( fpga_led_internal ),               //                               led_pio_external_connection.export                     
         .dipsw_pio_external_connection_export  ( SW ),                 //                               dipsw_pio_external_connection.export
         .button_pio_external_connection_export ( fpga_debounced_buttons ),              //                               button_pio_external_connection.export 
-		  // --- NEW: Custom LCD Message Controller PIOs ---
-		  // fsm_status_pio [3:0]=btn_debounced (level signals, stable for full press duration)
-		  // Note: btn_pulse is single-cycle (20ns) — too fast for HPS polling. Use debounced levels instead.
-		  .fsm_status_pio_external_connection_export   ({4'b0, ctrl_btn_debounced}),          // 8-bit @ 0x6000
+      // --- NEW: Custom LCD Message Controller PIOs ---
+      // fsm_status_pio [7:5]=FSM state, [4:0]=FSM message index
+      // Debounced levels remain available via button_pio @ 0x5000.
+      .fsm_status_pio_external_connection_export   ({ctrl_fsm_state, ctrl_fsm_msg_index}), // 8-bit @ 0x6000
 		  .timer_status_pio_external_connection_export  ({3'b0, ctrl_seconds_remaining, ctrl_timeout_flag}), // 8-bit @ 0x7000
 		  .hps_0_h2f_reset_reset_n               ( hps_fpga_reset_n ),                //                hps_0_h2f_reset.reset_n
 		  .hps_0_f2h_cold_reset_req_reset_n      (~hps_cold_reset ),      //       hps_0_f2h_cold_reset_req.reset_n
@@ -442,6 +444,8 @@ fpga_msg_controller #(
     .btn_debounced     (ctrl_btn_debounced),
     .timeout_flag      (ctrl_timeout_flag),
     .seconds_remaining (ctrl_seconds_remaining),
+    .fsm_state         (ctrl_fsm_state),
+    .fsm_msg_index     (ctrl_fsm_msg_index),
     .hex0              (hex0_out),
     .hex1              (hex1_out),
     .hex2              (hex2_out),

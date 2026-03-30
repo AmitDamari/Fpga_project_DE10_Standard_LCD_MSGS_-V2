@@ -29,6 +29,8 @@ module fpga_msg_controller #(
     output wire [NUM_BUTTONS-1:0]  btn_debounced,     // Current debounced levels
     output wire                    timeout_flag,       // Idle timer expired
     output wire [3:0]              seconds_remaining,  // BCD countdown for display
+    output wire [2:0]              fsm_state,          // Verilog UI FSM state
+    output wire [4:0]              fsm_msg_index,      // Verilog UI FSM message index
 
     // ---- HEX display outputs (active-LOW 7-segment) ----
     output wire [6:0]              hex0,
@@ -86,7 +88,22 @@ module fpga_msg_controller #(
     );
 
     // ================================================================
-    // Stage 4: HEX Display
+    // Stage 4: Verilog UI FSM (project-critical control logic)
+    // ================================================================
+    message_fsm #(
+        .MSG_COUNT (18),
+        .INDEX_W   (5)
+    ) u_message_fsm (
+        .clk         (clk),
+        .rst_n       (rst_n),
+        .btn_pulse   (btn_pulse),
+        .timeout_flag(timeout_flag),
+        .state       (fsm_state),
+        .msg_index   (fsm_msg_index)
+    );
+
+    // ================================================================
+    // Stage 5: HEX Display
     //   HEX0: Timer countdown (0–F seconds)
     //   HEX1: Last button pressed (0–3, F=none)
     //   HEX2: Timeout status (0=running, 1=expired)

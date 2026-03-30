@@ -19,10 +19,26 @@
 #define HW_REGS_MASK          (HW_REGS_SPAN - 1)
 #define ALT_LWFPGASLVS_OFST   0xFF200000
 #define BUTTON_PIO_BASE       0x5000
-#define FSM_STATUS_PIO_BASE   0x6000   // NEW: button pulses + debounced levels
+#define FSM_STATUS_PIO_BASE   0x6000   // NEW: [7:5]=FSM state, [4:0]=FSM message index
 #define TIMER_STATUS_PIO_BASE 0x7000   // NEW: timeout flag + seconds remaining
 #define BUTTON_MASK           0x0F
 #define TIMEOUT_SECONDS       15
+
+#define FSM_STATUS_STATE_SHIFT 5
+#define FSM_STATUS_STATE_MASK  0xE0
+#define FSM_STATUS_INDEX_MASK  0x1F
+
+#define FSM_STATE_FROM_REG(v)  (((v) & FSM_STATUS_STATE_MASK) >> FSM_STATUS_STATE_SHIFT)
+#define FSM_INDEX_FROM_REG(v)  ((v) & FSM_STATUS_INDEX_MASK)
+#define MSG_COUNT              18
+
+typedef enum {
+    HW_FSM_INIT  = 0,
+    HW_FSM_IDLE  = 1,
+    HW_FSM_HOME  = 2,
+    HW_FSM_MSG   = 3,
+    HW_FSM_SLEEP = 4
+} HwFsmState;
 
 // FSM States
 typedef enum {
@@ -34,9 +50,20 @@ typedef enum {
 // Global variables
 void *virtual_base = NULL;
 volatile uint32_t *button_addr = NULL;
-volatile uint32_t *fsm_status_addr = NULL;    // NEW: FPGA button status register
+volatile uint32_t *fsm_status_addr = NULL;    // NEW: FPGA FSM status register
 volatile uint32_t *timer_status_addr = NULL;  // NEW: FPGA timer status register
 int fd = -1;
+
+static const char* hw_fsm_state_name(int state) {
+    switch (state) {
+        case HW_FSM_INIT:  return "INIT";
+        case HW_FSM_IDLE:  return "IDLE";
+        case HW_FSM_HOME:  return "HOME";
+        case HW_FSM_MSG:   return "MSG";
+        case HW_FSM_SLEEP: return "SLEEP";
+        default:           return "UNKNOWN";
+    }
+}
 
 int main() {
     // === SETUP (exactly like combined_test.c) ===
@@ -76,12 +103,11 @@ int main() {
     LCDHW_BackLight(true);
     printf("LCD Ready.\n");
     
-    // === STATE MACHINE VARIABLES ===
-    State currentState = STATE_IDLE;
-    State lastState = STATE_MESSAGE;  // Different from initial, forces first draw
-    int msgIndex = 0;
-    int lastMsgIndex = -1;
-    int lastBtn = 0;  // For software edge detection on debounced levels
+    // === UI RENDER TRACKING ===
+    int last_hw_state = -1;
+    int last_hw_msg_index = -1;
+    bool backlight_on = true;
+    int last_warn_code = 0;
     
     printf("\n=== LCD MESSAGE SYSTEM STARTED ===\n");
     printf("Using FPGA hardware debouncing + idle timer.\n");
@@ -93,125 +119,97 @@ int main() {
         // Read FPGA hardware status registers
         // ============================================================
         uint32_t fsm_status = *fsm_status_addr;
-        // [3:0] = btn_debounced: LEVEL signals (active-HIGH), stable for entire press
-        // These are NOT single-cycle pulses — they stay HIGH while button is held
-        int btn = fsm_status & 0x0F;
+        int hw_fsm_state = FSM_STATE_FROM_REG(fsm_status);
+        int hw_msg_index = FSM_INDEX_FROM_REG(fsm_status);
         
         uint32_t timer_status = *timer_status_addr;
         bool timeout = timer_status & 1;             // [0] timeout flag (sticky until button press)
         int secs_left = (timer_status >> 1) & 0x0F;  // [4:1] seconds remaining
-        
-        // Software edge detection: detect press transition (0→1)
-        // This is reliable because btn_debounced stays HIGH for the entire
-        // button press duration (typically >100ms), easily caught by 20ms polling
-        bool btnPressed = (btn != 0 && lastBtn == 0);
-        lastBtn = btn;
-        
-        if (btnPressed) {
-            printf("FPGA btn_debounced: 0x%X (KEY0=%d KEY1=%d KEY2=%d KEY3=%d) secs_left=%d\n",
-                   btn, (btn&1), (btn&2)>>1, (btn&4)>>2, (btn&8)>>3, secs_left);
+
+        // Runtime sanity checks (diagnostic only, no control impact)
+        // Warn once per warning type transition to avoid log spam.
+        if ((hw_fsm_state == HW_FSM_SLEEP) && !timeout) {
+            if (last_warn_code != 1) {
+                printf("[WARN] FSM=SLEEP but timeout_flag=0 (unexpected combination)\n");
+                last_warn_code = 1;
+            }
+        } else if ((hw_fsm_state == HW_FSM_MSG) && (hw_msg_index >= MSG_COUNT)) {
+            if (last_warn_code != 2) {
+                printf("[WARN] FSM=MSG with out-of-range msg_index=%d\n", hw_msg_index);
+                last_warn_code = 2;
+            }
+        } else {
+            last_warn_code = 0;
         }
-        
-        // === STATE MACHINE ===
-        // IMPORTANT: use a local copy of btnPressed so we consume it once per loop.
-        // After the switch, clear it to prevent double-firing across states.
-        bool btnConsumed = false;
-        switch (currentState) {
-            
-            case STATE_IDLE:
-                // Draw screen only when entering this state
-                if (currentState != lastState) {
-                    printf(">>> Entering STATE_IDLE, drawing screen...\n");
+
+        // HPS is a renderer only; hardware FSM is the control authority.
+        if ((hw_fsm_state != last_hw_state) ||
+            ((hw_fsm_state == HW_FSM_MSG) && (hw_msg_index != last_hw_msg_index))) {
+
+            printf("HW FSM: %s(%d), msg_idx=%d, secs_left=%d, timeout=%d\n",
+                   hw_fsm_state_name(hw_fsm_state), hw_fsm_state,
+                   hw_msg_index, secs_left, timeout ? 1 : 0);
+
+            switch (hw_fsm_state) {
+                case HW_FSM_INIT:
+                case HW_FSM_IDLE:
+                    if (!backlight_on) {
+                        LCDHW_BackLight(true);
+                        backlight_on = true;
+                    }
                     LCD_GraphicClear();
                     LCD_TextOut(0, 0,  "==================");
                     LCD_TextOut(0, 16, "  DE10-Standard   ");
                     LCD_TextOut(0, 32, "   LCD Message    ");
                     LCD_TextOut(0, 48, "  Press Any Key   ");
-                    lastState = currentState;
-                }
-                
-                // Any button press goes to HOME
-                if (btnPressed && !btnConsumed) {
-                    printf("Transition: IDLE -> HOME\n");
-                    currentState = STATE_HOME;
-                    btnConsumed = true;
-                }
-                break;
-                
-            case STATE_HOME:
-                // Draw screen only when entering this state
-                if (currentState != lastState) {
-                    printf(">>> Entering STATE_HOME, drawing screen...\n");
+                    break;
+
+                case HW_FSM_HOME:
+                    if (!backlight_on) {
+                        LCDHW_BackLight(true);
+                        backlight_on = true;
+                    }
                     LCD_GraphicClear();
                     LCD_TextOut(0, 0,  "==================");
                     LCD_TextOut(0, 16, "  Welcome User!   ");
                     LCD_TextOut(0, 32, " KEY1/KEY2: Msgs  ");
                     LCD_TextOut(0, 48, " KEY0: Back       ");
-                    lastState = currentState;
-                }
-                
-                // KEY0 (bit 0) = back to IDLE
-                if (btnPressed && !btnConsumed && (btn & 1)) {
-                    printf("Transition: HOME -> IDLE\n");
-                    currentState = STATE_IDLE;
-                    btnConsumed = true;
-                }
-                // KEY1 (bit 1) or KEY2 (bit 2) = go to messages
-                if (btnPressed && !btnConsumed && ((btn & 2) || (btn & 4))) {
-                    printf("Transition: HOME -> MESSAGE\n");
-                    currentState = STATE_MESSAGE;
-                    msgIndex = 0;
-                    lastMsgIndex = -1;  // Force redraw
-                    btnConsumed = true;
-                }
-                
-                // Timeout returns to IDLE
-                if (timeout) {
-                    printf("Timeout: HOME -> IDLE\n");
-                    currentState = STATE_IDLE;
-                }
-                break;
-                
-            case STATE_MESSAGE:
-                // Draw screen when entering state OR message changes
-                if (currentState != lastState || msgIndex != lastMsgIndex) {
-                    printf(">>> Entering STATE_MESSAGE, showing message %d...\n", msgIndex);
+                    break;
+
+                case HW_FSM_MSG: {
+                    int safe_idx = (hw_msg_index < MSG_COUNT) ? hw_msg_index : 0;
+                    if (!backlight_on) {
+                        LCDHW_BackLight(true);
+                        backlight_on = true;
+                    }
                     LCD_GraphicClear();
-                    LCD_TextOut(0, 0,  (char*)MSG_LIST[msgIndex][0]);
-                    LCD_TextOut(0, 16, (char*)MSG_LIST[msgIndex][1]);
-                    LCD_TextOut(0, 32, (char*)MSG_LIST[msgIndex][2]);
-                    LCD_TextOut(0, 48, (char*)MSG_LIST[msgIndex][3]);
-                    lastState = currentState;
-                    lastMsgIndex = msgIndex;
+                    LCD_TextOut(0, 0,  (char*)MSG_LIST[safe_idx][0]);
+                    LCD_TextOut(0, 16, (char*)MSG_LIST[safe_idx][1]);
+                    LCD_TextOut(0, 32, (char*)MSG_LIST[safe_idx][2]);
+                    LCD_TextOut(0, 48, (char*)MSG_LIST[safe_idx][3]);
+                    break;
                 }
-                
-                // KEY0 (bit 0) = back to HOME
-                if (btnPressed && !btnConsumed && (btn & 1)) {
-                    printf("Transition: MESSAGE -> HOME\n");
-                    currentState = STATE_HOME;
-                    btnConsumed = true;
-                }
-                // KEY1 (bit 1) = next message
-                if (btnPressed && !btnConsumed && (btn & 2)) {
-                    msgIndex++;
-                    if (msgIndex >= 18) msgIndex = 0;
-                    printf("Next message: %d\n", msgIndex);
-                    btnConsumed = true;
-                }
-                // KEY2 (bit 2) = previous message
-                if (btnPressed && !btnConsumed && (btn & 4)) {
-                    msgIndex--;
-                    if (msgIndex < 0) msgIndex = 17;
-                    printf("Previous message: %d\n", msgIndex);
-                    btnConsumed = true;
-                }
-                
-                // Timeout returns to IDLE
-                if (timeout) {
-                    printf("Timeout: MESSAGE -> IDLE\n");
-                    currentState = STATE_IDLE;
-                }
-                break;
+
+                case HW_FSM_SLEEP:
+                    LCD_GraphicClear();
+                    if (backlight_on) {
+                        LCDHW_BackLight(false);
+                        backlight_on = false;
+                    }
+                    break;
+
+                default:
+                    if (!backlight_on) {
+                        LCDHW_BackLight(true);
+                        backlight_on = true;
+                    }
+                    LCD_GraphicClear();
+                    LCD_TextOut(0, 16, "  FSM ERROR STATE ");
+                    break;
+            }
+
+            last_hw_state = hw_fsm_state;
+            last_hw_msg_index = hw_msg_index;
         }
         
         usleep(20000);  // 20ms polling interval (FPGA handles debouncing)

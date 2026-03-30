@@ -9,12 +9,42 @@ $ErrorActionPreference = "Continue"   # Do NOT Stop on native tool warnings
 # --- Resolve workspace root (parent of the 'sim' folder containing this script) ---
 $ROOT = Split-Path -Parent $PSScriptRoot
 
-# --- Check iverilog is available ---
-if (-not (Get-Command "iverilog" -ErrorAction SilentlyContinue)) {
+function Test-SimToolchain {
+    $iverilogCmd = Get-Command "iverilog" -ErrorAction SilentlyContinue
+    $vvpCmd = Get-Command "vvp" -ErrorAction SilentlyContinue
+
+    if ($iverilogCmd -and $vvpCmd) {
+        return $true
+    }
+
     Write-Host ""
-    Write-Host "ERROR: 'iverilog' not found in PATH." -ForegroundColor Red
-    Write-Host "Install Icarus Verilog from: https://bleyer.org/icarus/" -ForegroundColor Yellow
-    Write-Host "After install, add its bin folder to your system PATH and re-run this script."
+    Write-Host "ERROR: Required simulator tools not found in PATH." -ForegroundColor Red
+    if (-not $iverilogCmd) {
+        Write-Host "  - Missing: iverilog" -ForegroundColor Red
+    }
+    if (-not $vvpCmd) {
+        Write-Host "  - Missing: vvp" -ForegroundColor Red
+    }
+
+    Write-Host "" 
+    Write-Host "Install Icarus Verilog (Windows):" -ForegroundColor Yellow
+    Write-Host "  1) Download from: https://bleyer.org/icarus/" -ForegroundColor Yellow
+    Write-Host "  2) Install, then add its bin folder to PATH" -ForegroundColor Yellow
+    Write-Host "     Example path: C:\iverilog\bin" -ForegroundColor Yellow
+    Write-Host "  3) Open a new PowerShell and verify:" -ForegroundColor Yellow
+    Write-Host "       iverilog -V" -ForegroundColor Yellow
+    Write-Host "       vvp -V" -ForegroundColor Yellow
+
+    Write-Host ""
+    Write-Host "Optional quick PATH add for current shell:" -ForegroundColor Cyan
+    Write-Host '  $env:Path += ";C:\iverilog\bin"' -ForegroundColor Cyan
+    Write-Host ""
+
+    return $false
+}
+
+# --- Check simulator toolchain availability ---
+if (-not (Test-SimToolchain)) {
     exit 1
 }
 
@@ -34,7 +64,7 @@ $fail = 0
 # =============================================================================
 # Helper: compile with iverilog, then simulate with vvp
 # =============================================================================
-function Run-Sim {
+function Invoke-Sim {
     param(
         [string]   $Name,       # short test name
         [string[]] $Sources     # all .v files (TB first, then RTL)
@@ -75,7 +105,7 @@ function Run-Sim {
     } else {
         # Heuristic: detect real test failures (avoid matching "Failed : 0" summary lines)
         $combinedOut = $simOut -join "`n"
-        $hasFail = $combinedOut -match "SOME TESTS FAILED|FAIL Test \d|\[FAIL\]|FAILURES DETECTED|error:"
+        $hasFail = $combinedOut -match "SOME TESTS FAILED|FAIL Test \d|\[FAIL\]|FAILURES DETECTED|error:|\[PULSE WIDTH ERROR\]|FAIL \[TIMEOUT\]|\bassert(?:ion)?\b"
         if ($hasFail) {
             Write-Host "  [RESULT] FAILURES DETECTED in output" -ForegroundColor Red
             $script:fail++
@@ -96,27 +126,33 @@ Write-Host "#   PHASE 1: UNIT TESTS (hw/sim/testbenches/)            #"
 Write-Host "###########################################################"
 
 # --- TC-1: button_debouncer (4-channel, correct parameter name) ---
-Run-Sim "tb_button_debouncer_unit" @(
+Invoke-Sim "tb_button_debouncer_unit" @(
     "$TBH\tb_button_debouncer.v",
     "$RTL\button_debouncer.v"
 )
 
 # --- TC-2: button_edge_detector ---
-Run-Sim "tb_button_edge_detector" @(
+Invoke-Sim "tb_button_edge_detector" @(
     "$TBH\tb_button_edge_detector.v",
     "$RTL\button_edge_detector.v"
 )
 
 # --- TC-3: idle_timer ---
-Run-Sim "tb_idle_timer" @(
+Invoke-Sim "tb_idle_timer" @(
     "$TBH\tb_idle_timer.v",
     "$RTL\idle_timer.v"
 )
 
 # --- TC-4: hex_display ---
-Run-Sim "tb_hex_display" @(
+Invoke-Sim "tb_hex_display" @(
     "$TBH\tb_hex_display.v",
     "$RTL\hex_display.v"
+)
+
+# --- TC-5: message_fsm (Verilog control FSM) ---
+Invoke-Sim "tb_message_fsm" @(
+    "$TBH\tb_message_fsm.v",
+    "$RTL\message_fsm.v"
 )
 
 # =============================================================================
@@ -128,9 +164,27 @@ Write-Host "###########################################################"
 Write-Host "#   PHASE 2: INTEGRATION TEST                            #"
 Write-Host "###########################################################"
 
-Run-Sim "tb_fpga_msg_controller" @(
+Invoke-Sim "tb_fpga_msg_controller" @(
     "$TBH\tb_fpga_msg_controller.v",
     "$RTL\fpga_msg_controller.v",
+    "$RTL\message_fsm.v",
+    "$RTL\button_debouncer.v",
+    "$RTL\button_edge_detector.v",
+    "$RTL\idle_timer.v",
+    "$RTL\hex_display.v"
+)
+
+# --- TC-6: SoC register packing contract ---
+Invoke-Sim "tb_soc_register_contract" @(
+    "$TBH\tb_soc_register_contract.v"
+)
+
+# --- TC-7: top_level standalone integration ---
+Invoke-Sim "tb_top_level" @(
+    "$TBS\tb_top_level.v",
+    "$RTL\top_level.v",
+    "$RTL\fpga_msg_controller.v",
+    "$RTL\message_fsm.v",
     "$RTL\button_debouncer.v",
     "$RTL\button_edge_detector.v",
     "$RTL\idle_timer.v",
@@ -138,25 +192,32 @@ Run-Sim "tb_fpga_msg_controller" @(
 )
 
 # =============================================================================
-# PHASE 3 — Legacy testbenches (sim/testbenches/ — now fixed)
+# PHASE 3 — Legacy testbenches (optional)
 # =============================================================================
 
-Write-Host ""
-Write-Host "###########################################################"
-Write-Host "#   PHASE 3: LEGACY TESTBENCHES (sim/testbenches/)       #"
-Write-Host "###########################################################"
+$runLegacy = $env:RUN_LEGACY -eq "1"
 
-# --- TC-L1: button_debouncer single-channel (sim/testbenches/ version) ---
-Run-Sim "tb_button_debouncer_legacy" @(
-    "$TBS\tb_button_debouncer.v",
-    "$RTL\button_debouncer.v"
-)
+if ($runLegacy) {
+    Write-Host ""
+    Write-Host "###########################################################"
+    Write-Host "#   PHASE 3: LEGACY TESTBENCHES (sim/testbenches/)       #"
+    Write-Host "###########################################################"
 
-# --- TC-L2: clock_divider ---
-Run-Sim "tb_clock_divider" @(
-    "$TBS\tb_clock_divider.v",
-    "$RTL\clock_divider.v"
-)
+    # --- TC-L1: button_debouncer single-channel (legacy) ---
+    Invoke-Sim "tb_button_debouncer_legacy" @(
+        "$TBS\tb_button_debouncer.v",
+        "$RTL\button_debouncer.v"
+    )
+
+    # --- TC-L2: clock_divider (legacy path) ---
+    Invoke-Sim "tb_clock_divider" @(
+        "$TBS\tb_clock_divider.v",
+        "$RTL\clock_divider.v"
+    )
+} else {
+    Write-Host ""
+    Write-Host "[INFO] Skipping optional legacy suites. Set RUN_LEGACY=1 to include them." -ForegroundColor Yellow
+}
 
 # =============================================================================
 # FINAL SUMMARY

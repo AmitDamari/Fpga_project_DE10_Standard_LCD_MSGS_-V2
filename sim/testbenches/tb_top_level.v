@@ -1,120 +1,150 @@
 // ============================================================================
-// top_level.v - DE10-Standard LCD Message Display System
-// File: hw/rtl/top_level.v
+// Testbench: tb_top_level
+// Project: DE10-Standard LCD Message System
+// Description: Standalone top-level verification for hw/rtl/top_level.v.
+//              Uses defparam overrides on the internal fpga_msg_controller
+//              instance to keep simulation runtime practical.
 // ============================================================================
 
-module top_level (
-    // Clock and Reset
-    input wire CLOCK_50,
-    input wire [3:0] KEY,           // Active low pushbuttons
-    
-    // LCD SPI Interface (DIRECTLY TO GPIO - DIRECTLY DIRECTLY)
-    output wire LCD_SPI_CLK,
-    output wire LCD_SPI_MOSI,
-    output wire LCD_SPI_CS_N,
-    output wire LCD_A0,
-    output wire LCD_RST,
-    
-    // Optional: LEDs for debugging
-    output wire [9:0] LEDR
-);
+`timescale 1ns / 1ps
 
-    // ========================================
-    // Internal Signals
-    // ========================================
-    
-    wire system_clk;
-    wire system_reset_n;
-    
-    // SPI signals from Qsys
-    wire spi_clk;
-    wire spi_mosi;
-    wire spi_miso;
-    wire spi_cs_n;
-    
-    // PIO signals
-    wire [0:0] lcd_a0_out;
-    wire [0:0] lcd_rst_out;
-    wire [1:0] button_in;
-    
-    // Debounced buttons
-    wire button_next_debounced;
-    wire button_back_debounced;
-    
-    // ========================================
-    // Clock and Reset
-    // ========================================
-    
-    assign system_clk = CLOCK_50;
-    assign system_reset_n = KEY[0];  // KEY0 as system reset
-    
-    // ========================================
-    // Button Assignment and Debouncing
-    // ========================================
-    
-    // Raw button inputs (directly directly directly directly)
-    wire button_next_raw = ~KEY[1];  // KEY1 = NEXT (active low → active high)
-    wire button_back_raw = ~KEY[2];  // KEY2 = BACK
-    
-    // Button debouncer for NEXT button
-    button_debouncer #(
-        .DEBOUNCE_TIME(1000000)  // 20ms at 50MHz
-    ) debouncer_next (
-        .clk(system_clk),
-        .rst_n(system_reset_n),
-        .button_in(button_next_raw),
-        .button_out(button_next_debounced)
+module tb_top_level;
+
+    localparam CLK_PERIOD_NS = 1_000_000; // 1 kHz for fast simulation
+
+    reg        CLOCK_50;
+    reg [3:0]  KEY;
+    wire [6:0] HEX0;
+    wire [6:0] HEX1;
+    wire [6:0] HEX2;
+    wire [6:0] HEX3;
+    wire [6:0] HEX4;
+    wire [6:0] HEX5;
+    wire [9:0] LEDR;
+
+    integer pass_count = 0;
+    integer fail_count = 0;
+    integer test_num   = 0;
+
+    top_level dut (
+        .CLOCK_50(CLOCK_50),
+        .KEY(KEY),
+        .HEX0(HEX0),
+        .HEX1(HEX1),
+        .HEX2(HEX2),
+        .HEX3(HEX3),
+        .HEX4(HEX4),
+        .HEX5(HEX5),
+        .LEDR(LEDR)
     );
-    
-    // Button debouncer for BACK button
-    button_debouncer #(
-        .DEBOUNCE_TIME(1000000)
-    ) debouncer_back (
-        .clk(system_clk),
-        .rst_n(system_reset_n),
-        .button_in(button_back_raw),
-        .button_out(button_back_debounced)
-    );
-    
-    // Combine debounced buttons for PIO input
-    assign button_in = {button_back_debounced, button_next_debounced};
-    
-    // ========================================
-    // Nios II System Instance
-    // ========================================
-    
-    nios_system u_nios_system (
-        // Clock and Reset
-        .clk_clk(system_clk),
-        .reset_reset_n(system_reset_n),
-        
-        // SPI LCD External
-        .spi_lcd_external_MISO(1'b0),           // LCD doesn't send data back
-        .spi_lcd_external_MOSI(spi_mosi),
-        .spi_lcd_external_SCLK(spi_clk),
-        .spi_lcd_external_SS_n(spi_cs_n),
-        
-        // LCD Control PIOs
-        .lcd_a0_external_export(lcd_a0_out),
-        .lcd_rst_external_export(lcd_rst_out),
-        
-        // Button PIO
-        .button_external_export(button_in)
-    );
-    
-    // ========================================
-    // Output Assignments
-    // ========================================
-    
-    assign LCD_SPI_CLK = spi_clk;
-    assign LCD_SPI_MOSI = spi_mosi;
-    assign LCD_SPI_CS_N = spi_cs_n;
-    assign LCD_A0 = lcd_a0_out[0];
-    assign LCD_RST = lcd_rst_out[0];
-    
-    // Debug LEDs
-    assign LEDR[0] = button_next_debounced;
-    assign LEDR[1] = button_back_debounced;
-    assign LEDR[9:2] = 8'b0;
+
+    // Fast simulation overrides for internal controller instance.
+    defparam dut.u_ctrl.CLK_FREQ_HZ = 1000;
+    defparam dut.u_ctrl.DEBOUNCE_MS = 1;
+    defparam dut.u_ctrl.TIMEOUT_SEC = 3;
+
+    function [6:0] seven_seg;
+        input [3:0] val;
+        begin
+            case (val)
+                4'h0: seven_seg = 7'b1000000;
+                4'h1: seven_seg = 7'b1111001;
+                4'h2: seven_seg = 7'b0100100;
+                4'h3: seven_seg = 7'b0110000;
+                4'h4: seven_seg = 7'b0011001;
+                4'h5: seven_seg = 7'b0010010;
+                4'h6: seven_seg = 7'b0000010;
+                4'h7: seven_seg = 7'b1111000;
+                4'h8: seven_seg = 7'b0000000;
+                4'h9: seven_seg = 7'b0010000;
+                4'hA: seven_seg = 7'b0001000;
+                4'hB: seven_seg = 7'b0000011;
+                4'hC: seven_seg = 7'b1000110;
+                4'hD: seven_seg = 7'b0100001;
+                4'hE: seven_seg = 7'b0000110;
+                4'hF: seven_seg = 7'b0001110;
+                default: seven_seg = 7'b1111111;
+            endcase
+        end
+    endfunction
+
+    task check;
+        input condition;
+        input [255:0] name;
+        begin
+            test_num = test_num + 1;
+            if (!condition) begin
+                $display("FAIL Test %0d [%0s] @ %0t", test_num, name, $time);
+                fail_count = fail_count + 1;
+            end else begin
+                $display("PASS Test %0d [%0s] @ %0t", test_num, name, $time);
+                pass_count = pass_count + 1;
+            end
+        end
+    endtask
+
+    initial CLOCK_50 = 1'b0;
+    always #(CLK_PERIOD_NS/2) CLOCK_50 = ~CLOCK_50;
+
+    initial begin
+        $display("=== TB: top_level ===");
+
+        // KEY are active-LOW: KEY[0]=reset
+        KEY = 4'b1111;
+        KEY[0] = 1'b0;
+        repeat (5) @(posedge CLOCK_50);
+        KEY[0] = 1'b1;
+        repeat (2) @(posedge CLOCK_50);
+
+        check(LEDR[4] == 1'b0, "Init timeout LED low");
+        check(LEDR[3:0] == 4'b0000, "Init debounced LEDs low");
+        check(HEX1 == seven_seg(4'hF), "Init HEX1 shows F");
+        check(HEX2 == seven_seg(4'h0), "Init HEX2 shows 0");
+        check(HEX0 == seven_seg(4'd3), "Init HEX0 shows timeout value");
+
+        // Press KEY1 (bit1)
+        KEY[1] = 1'b0;
+        repeat (1010) @(posedge CLOCK_50);
+        check(LEDR[1] == 1'b1, "KEY1 debounced reflected on LEDR[1]");
+        check(HEX1 == seven_seg(4'd1), "HEX1 tracks last button KEY1");
+
+        KEY[1] = 1'b1;
+        repeat (1010) @(posedge CLOCK_50);
+        check(LEDR[1] == 1'b0, "KEY1 release reflected on LEDR[1]");
+
+        // Wait for timeout (3 seconds with fast params)
+        repeat (3*1000 + 20) @(posedge CLOCK_50);
+        check(LEDR[4] == 1'b1, "Timeout LED asserted");
+        check(HEX2 == seven_seg(4'd1), "HEX2 shows timeout flag");
+        check(HEX0 == seven_seg(4'd0), "HEX0 shows zero on timeout");
+
+        // Press KEY2 to reset timer and update last-button indicator
+        KEY[2] = 1'b0;
+        repeat (1010) @(posedge CLOCK_50);
+        check(LEDR[4] == 1'b0, "Timeout cleared by key press");
+        check(HEX1 == seven_seg(4'd2), "HEX1 tracks last button KEY2");
+
+        KEY[2] = 1'b1;
+        repeat (1010) @(posedge CLOCK_50);
+
+        check(HEX3 == seven_seg(4'h0), "HEX3 reserved zero");
+        check(HEX4 == seven_seg(4'h0), "HEX4 reserved zero");
+        check(HEX5 == seven_seg(4'h0), "HEX5 reserved zero");
+
+        $display("");
+        $display("=== RESULTS: %0d PASSED, %0d FAILED out of %0d tests ===",
+                 pass_count, fail_count, test_num);
+        if (fail_count == 0)
+            $display("*** ALL TESTS PASSED ***");
+        else
+            $display("*** SOME TESTS FAILED ***");
+
+        $finish;
+    end
+
+    initial begin
+        $dumpfile("tb_top_level.vcd");
+        $dumpvars(0, tb_top_level);
+    end
 
 endmodule
