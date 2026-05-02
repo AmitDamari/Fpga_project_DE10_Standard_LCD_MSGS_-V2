@@ -27,7 +27,7 @@ This partition keeps timing-critical behavior deterministic in hardware and remo
 
 ## 3. RTL Modules
 
-- `hw/rtl/button_debouncer.v`: 2-FF synchronizer + stability counter, default 50 ms window.
+- `hw/rtl/button_debouncer.v`: 2-FF synchronizer + stability counter, default 20 ms window.
 - `hw/rtl/button_edge_detector.v`: rising-edge one-shot pulse generation.
 - `hw/rtl/idle_timer.v`: parameterized countdown, timeout assert/clear behavior.
 - `hw/rtl/message_fsm.v`: 5-state Verilog FSM with timeout priority and index wrap-around.

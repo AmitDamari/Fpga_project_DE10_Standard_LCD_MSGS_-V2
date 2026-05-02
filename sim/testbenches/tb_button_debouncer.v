@@ -28,7 +28,11 @@ module tb_button_debouncer;
     reg  clk;
     reg  rst_n;
     reg  btn_in;
+    wire btn_in_dut;
     wire btn_out;
+
+    // Legacy TB uses active-HIGH press semantics; DUT expects active-LOW input.
+    assign btn_in_dut = ~btn_in;
     
     //=========================================================================
     // Test Tracking Variables
@@ -58,7 +62,7 @@ module tb_button_debouncer;
     ) dut (
         .clk     (clk),
         .rst_n   (rst_n),
-        .btn_in  (btn_in),
+        .btn_in  (btn_in_dut),
         .btn_out (btn_out)
     );
     

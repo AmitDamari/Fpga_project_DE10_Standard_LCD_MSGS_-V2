@@ -65,6 +65,33 @@ Run these from the project root before board testing.
     .\verify_all.ps1
     ```
 
+5. Automated waveform analysis report (VCD checks + summary markdown):
+    ```powershell
+    .\sim\run_wave_analysis.ps1
+    ```
+    Report output:
+    - `sim/results/wave_analysis_report.md`
+    - Guide: `docs/waveform_analysis_guide.md`
+
+6. Quartus 21.1 bundled Questa regression (canonical suites):
+    ```powershell
+    .\sim\run_quartus_questa_sim.ps1
+    ```
+
+7. Quartus-linked simulation collateral generation + Questa regression:
+    ```powershell
+    .\sim\run_quartus_questa_sim.ps1 -GenerateQuartusNetlist
+    ```
+    Generated Quartus simulation netlist:
+    - `hw/quartus/sim/eda_questa/DE10_Standard_GHRD.vo`
+
+8. One-command pre-board verification gate (canonical + legacy + waveform + Quartus netlist):
+    ```powershell
+    .\sim\run_pre_board_verification.ps1
+    ```
+    Summary report:
+    - `sim/results/pre_board_verification_report.md`
+
 If `iverilog` and `vvp` are installed but not in PATH, a temporary shell-only fix is:
 ```powershell
 $env:Path = "C:\iverilog\bin;" + $env:Path

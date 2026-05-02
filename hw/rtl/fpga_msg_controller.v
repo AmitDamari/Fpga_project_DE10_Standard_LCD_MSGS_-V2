@@ -2,7 +2,7 @@
 // Module: fpga_msg_controller
 // Project: DE10-Standard LCD Message System
 // Description: Top-level FPGA wrapper that integrates all custom modules:
-//              - button_debouncer (50ms, 4-channel)
+//              - button_debouncer (20ms, 4-channel)
 //              - button_edge_detector (rising-edge pulse)
 //              - idle_timer (15s countdown)
 //              - hex_display (7-seg decoder for HEX0-5)
@@ -14,7 +14,7 @@
 
 module fpga_msg_controller #(
     parameter CLK_FREQ_HZ  = 50_000_000,
-    parameter DEBOUNCE_MS  = 50,
+    parameter DEBOUNCE_MS  = 20,
     parameter TIMEOUT_SEC  = 15,
     parameter NUM_BUTTONS  = 4
 )(

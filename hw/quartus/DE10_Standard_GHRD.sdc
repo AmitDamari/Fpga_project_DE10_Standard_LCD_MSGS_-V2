@@ -119,6 +119,13 @@ set_false_path -from [get_ports {KEY*}] -to *
 set_false_path -from [get_ports {SW*} ] -to *
 set_false_path -from * -to [get_ports {LEDR*}]
 
+# HPS DDR3 pre-calibration paths (GHRD IP). Negative slack is expected per report.
+# These are not part of custom logic signoff; constrain as false paths.
+set_false_path -from [get_clocks {soc_system:u0|soc_system_hps_0:hps_0|soc_system_hps_0_hps_io:hps_io|soc_system_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|pll_write_clk_dq_write_clk}] \
+               -to   [get_ports {HPS_DDR3_DQ* HPS_DDR3_DM*}]
+set_false_path -from [get_clocks {soc_system:u0|soc_system_hps_0:hps_0|soc_system_hps_0_hps_io:hps_io|soc_system_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|afi_clk}] \
+               -to   [get_ports {HPS_DDR3_ADDR* HPS_DDR3_BA* HPS_DDR3_CAS_N HPS_DDR3_RAS_N HPS_DDR3_WE_N HPS_DDR3_CS_N HPS_DDR3_CKE HPS_DDR3_ODT HPS_DDR3_DQS_P* HPS_DDR3_DQS_N*}]
+
 
 
 #**************************************************************

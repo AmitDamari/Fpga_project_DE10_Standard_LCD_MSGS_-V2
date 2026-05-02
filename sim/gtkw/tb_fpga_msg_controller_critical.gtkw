@@ -1,0 +1,41 @@
+[*] GTKWave Analyzer
+[dumpfile] "sim/results/tb_fpga_msg_controller.vcd"
+[timestart] 0
+[sst_width] 280
+[signals_width] 420
+@28
+tb_fpga_msg_controller.clk
+@22
+tb_fpga_msg_controller.rst_n
+@22
+tb_fpga_msg_controller.key_in[3:0]
+@22
+tb_fpga_msg_controller.btn_debounced[3:0]
+@22
+tb_fpga_msg_controller.btn_pulse[3:0]
+@22
+tb_fpga_msg_controller.fsm_state[2:0]
+@22
+tb_fpga_msg_controller.fsm_msg_index[4:0]
+@22
+tb_fpga_msg_controller.seconds_remaining[3:0]
+@22
+tb_fpga_msg_controller.timeout_flag
+@22
+tb_fpga_msg_controller.hex0[6:0]
+@22
+tb_fpga_msg_controller.hex1[6:0]
+@22
+tb_fpga_msg_controller.hex2[6:0]
+@22
+tb_fpga_msg_controller.dut.u_debouncer.btn_out[3:0]
+@22
+tb_fpga_msg_controller.dut.u_edge_det.btn_pulse[3:0]
+@22
+tb_fpga_msg_controller.dut.u_message_fsm.state[2:0]
+@22
+tb_fpga_msg_controller.dut.u_message_fsm.msg_index[4:0]
+@22
+tb_fpga_msg_controller.dut.u_timer.timeout
+@22
+tb_fpga_msg_controller.dut.u_timer.seconds_remaining[3:0]

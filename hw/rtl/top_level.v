@@ -57,7 +57,7 @@ module top_level (
     // ----------------------------------------------------------------
     fpga_msg_controller #(
         .CLK_FREQ_HZ (50_000_000),    // 50 MHz — match CLOCK_50
-        .DEBOUNCE_MS (50),             // 50 ms debounce window
+        .DEBOUNCE_MS (20),             // 20 ms debounce window
         .TIMEOUT_SEC (15),             // 15-second idle timeout
         .NUM_BUTTONS (4)               // All 4 KEY buttons
     ) u_ctrl (

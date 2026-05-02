@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
+#include <signal.h>     // NEW: graceful shutdown
 #include <time.h>
 
 #include "LCD_Hw.h"
@@ -19,8 +20,8 @@
 #define HW_REGS_MASK          (HW_REGS_SPAN - 1)
 #define ALT_LWFPGASLVS_OFST   0xFF200000
 #define BUTTON_PIO_BASE       0x5000
-#define FSM_STATUS_PIO_BASE   0x6000   // NEW: [7:5]=FSM state, [4:0]=FSM message index
-#define TIMER_STATUS_PIO_BASE 0x7000   // NEW: timeout flag + seconds remaining
+#define FSM_STATUS_PIO_BASE   0x6000
+#define TIMER_STATUS_PIO_BASE 0x7000
 #define BUTTON_MASK           0x0F
 #define TIMEOUT_SECONDS       15
 
@@ -40,19 +41,15 @@ typedef enum {
     HW_FSM_SLEEP = 4
 } HwFsmState;
 
-// FSM States
-typedef enum {
-    STATE_IDLE,
-    STATE_HOME,
-    STATE_MESSAGE
-} State;
+// === Globals ===
+static void *virtual_base = MAP_FAILED;
+static volatile uint32_t *button_addr       = NULL;
+static volatile uint32_t *fsm_status_addr   = NULL;
+static volatile uint32_t *timer_status_addr = NULL;
+static int  fd = -1;
 
-// Global variables
-void *virtual_base = NULL;
-volatile uint32_t *button_addr = NULL;
-volatile uint32_t *fsm_status_addr = NULL;    // NEW: FPGA FSM status register
-volatile uint32_t *timer_status_addr = NULL;  // NEW: FPGA timer status register
-int fd = -1;
+// NEW: graceful shutdown flag (signal-safe)
+static volatile sig_atomic_t g_shutdown = 0;
 
 static const char* hw_fsm_state_name(int state) {
     switch (state) {
@@ -65,86 +62,115 @@ static const char* hw_fsm_state_name(int state) {
     }
 }
 
-int main() {
-    // === SETUP (exactly like combined_test.c) ===
+// NEW: signal handler for Ctrl+C, kill, etc.
+static void signal_handler(int signum) {
+    (void)signum;
+    g_shutdown = 1;
+}
+
+// NEW: centralized cleanup so every exit path releases resources
+static void cleanup(void) {
+    // Try to leave LCD in a sane state
+    if (virtual_base != MAP_FAILED) {
+        LCDHW_BackLight(false);
+        LCD_GraphicClear();
+        munmap(virtual_base, HW_REGS_SPAN);
+        virtual_base = MAP_FAILED;
+    }
+    if (fd >= 0) {
+        close(fd);
+        fd = -1;
+    }
+    printf("\nClean shutdown complete.\n");
+}
+
+int main(void) {
+    // NEW: install signal handlers BEFORE opening hardware
+    signal(SIGINT,  signal_handler);
+    signal(SIGTERM, signal_handler);
+
     printf("Opening /dev/mem...\n");
     fd = open("/dev/mem", O_RDWR | O_SYNC);
     if (fd < 0) {
-        printf("ERROR: Cannot open /dev/mem\n");
+        perror("ERROR: Cannot open /dev/mem");
         return 1;
     }
-    
+
     printf("Memory mapping...\n");
-    virtual_base = mmap(NULL, HW_REGS_SPAN, PROT_READ | PROT_WRITE, MAP_SHARED, fd, HW_REGS_BASE);
+    virtual_base = mmap(NULL, HW_REGS_SPAN, PROT_READ | PROT_WRITE,
+                       MAP_SHARED, fd, HW_REGS_BASE);
     if (virtual_base == MAP_FAILED) {
-        printf("ERROR: mmap failed\n");
+        perror("ERROR: mmap failed");
         close(fd);
         return 1;
     }
     printf("  virtual_base = %p\n", virtual_base);
-    
-    printf("Setting up button address...\n");
-    button_addr = (uint32_t *)(virtual_base + ((ALT_LWFPGASLVS_OFST + BUTTON_PIO_BASE) & HW_REGS_MASK));
-    printf("  button_addr = %p\n", (void*)button_addr);
-    
-    // NEW: Map FPGA status registers
-    printf("Setting up FPGA status registers...\n");
-    fsm_status_addr = (uint32_t *)(virtual_base +
-        ((ALT_LWFPGASLVS_OFST + FSM_STATUS_PIO_BASE) & HW_REGS_MASK));
-    timer_status_addr = (uint32_t *)(virtual_base +
+
+    // Map register pointers
+    button_addr       = (uint32_t *)((char*)virtual_base +
+        ((ALT_LWFPGASLVS_OFST + BUTTON_PIO_BASE)       & HW_REGS_MASK));
+    fsm_status_addr   = (uint32_t *)((char*)virtual_base +
+        ((ALT_LWFPGASLVS_OFST + FSM_STATUS_PIO_BASE)   & HW_REGS_MASK));
+    timer_status_addr = (uint32_t *)((char*)virtual_base +
         ((ALT_LWFPGASLVS_OFST + TIMER_STATUS_PIO_BASE) & HW_REGS_MASK));
+    printf("  button_addr       = %p\n", (void*)button_addr);
     printf("  fsm_status_addr   = %p\n", (void*)fsm_status_addr);
     printf("  timer_status_addr = %p\n", (void*)timer_status_addr);
-    
+
+    // NEW: bridge sanity check — if all 0xFFFFFFFF, the FPGA is not responding
+    uint32_t probe = *fsm_status_addr;
+    if (probe == 0xFFFFFFFFu) {
+        fprintf(stderr, "ERROR: FPGA bridge returned 0xFFFFFFFF. "
+                        "Is the .rbf programmed and Qsys addresses correct?\n");
+        cleanup();
+        return 2;
+    }
+
     printf("Initializing LCD...\n");
     LCDHW_Init(virtual_base);
     LCD_Init();
     LCD_GraphicClear();
     LCDHW_BackLight(true);
     printf("LCD Ready.\n");
-    
-    // === UI RENDER TRACKING ===
-    int last_hw_state = -1;
-    int last_hw_msg_index = -1;
-    bool backlight_on = true;
-    int last_warn_code = 0;
-    
+
+    int  last_hw_state     = -1;
+    int  last_hw_msg_index = -1;
+    bool backlight_on      = true;
+    int  last_warn_code    = 0;
+
     printf("\n=== LCD MESSAGE SYSTEM STARTED ===\n");
     printf("Using FPGA hardware debouncing + idle timer.\n");
-    printf("Press buttons to navigate.\n\n");
-    
-    // === MAIN LOOP ===
-    while (1) {
-        // ============================================================
-        // Read FPGA hardware status registers
-        // ============================================================
-        uint32_t fsm_status = *fsm_status_addr;
-        int hw_fsm_state = FSM_STATE_FROM_REG(fsm_status);
-        int hw_msg_index = FSM_INDEX_FROM_REG(fsm_status);
-        
-        uint32_t timer_status = *timer_status_addr;
-        bool timeout = timer_status & 1;             // [0] timeout flag (sticky until button press)
-        int secs_left = (timer_status >> 1) & 0x0F;  // [4:1] seconds remaining
+    printf("Press Ctrl+C to exit cleanly.\n\n");
 
-        // Runtime sanity checks (diagnostic only, no control impact)
-        // Warn once per warning type transition to avoid log spam.
-        if ((hw_fsm_state == HW_FSM_SLEEP) && !timeout) {
-            if (last_warn_code != 1) {
-                printf("[WARN] FSM=SLEEP but timeout_flag=0 (unexpected combination)\n");
-                last_warn_code = 1;
-            }
-        } else if ((hw_fsm_state == HW_FSM_MSG) && (hw_msg_index >= MSG_COUNT)) {
+    // === MAIN LOOP ===
+    while (!g_shutdown) {                          // CHANGED: was while(1)
+        uint32_t fsm_status   = *fsm_status_addr;
+        uint32_t timer_status = *timer_status_addr;
+
+        int  hw_fsm_state = FSM_STATE_FROM_REG(fsm_status);
+        int  hw_msg_index = FSM_INDEX_FROM_REG(fsm_status);
+        bool timeout      = timer_status & 1;
+        int  secs_left    = (timer_status >> 1) & 0x0F;
+
+        // FIXED: only warn on persistent inconsistency (not on transitions).
+        // We require the inconsistency to coincide with a state change,
+        // so single-cycle transients during button-wake are ignored.
+        bool state_changed = (hw_fsm_state != last_hw_state);
+
+        if (state_changed && hw_fsm_state == HW_FSM_MSG &&
+            hw_msg_index >= MSG_COUNT) {
             if (last_warn_code != 2) {
                 printf("[WARN] FSM=MSG with out-of-range msg_index=%d\n", hw_msg_index);
                 last_warn_code = 2;
             }
-        } else {
+        } else if (!state_changed) {
             last_warn_code = 0;
         }
+        // REMOVED: the "FSM=SLEEP but timeout=0" warning — it fires
+        // legitimately during the SLEEP→IDLE wake transition.
 
-        // HPS is a renderer only; hardware FSM is the control authority.
-        if ((hw_fsm_state != last_hw_state) ||
-            ((hw_fsm_state == HW_FSM_MSG) && (hw_msg_index != last_hw_msg_index))) {
+        if (state_changed ||
+            (hw_fsm_state == HW_FSM_MSG && hw_msg_index != last_hw_msg_index)) {
 
             printf("HW FSM: %s(%d), msg_idx=%d, secs_left=%d, timeout=%d\n",
                    hw_fsm_state_name(hw_fsm_state), hw_fsm_state,
@@ -153,10 +179,7 @@ int main() {
             switch (hw_fsm_state) {
                 case HW_FSM_INIT:
                 case HW_FSM_IDLE:
-                    if (!backlight_on) {
-                        LCDHW_BackLight(true);
-                        backlight_on = true;
-                    }
+                    if (!backlight_on) { LCDHW_BackLight(true); backlight_on = true; }
                     LCD_GraphicClear();
                     LCD_TextOut(0, 0,  "==================");
                     LCD_TextOut(0, 16, "  DE10-Standard   ");
@@ -165,10 +188,7 @@ int main() {
                     break;
 
                 case HW_FSM_HOME:
-                    if (!backlight_on) {
-                        LCDHW_BackLight(true);
-                        backlight_on = true;
-                    }
+                    if (!backlight_on) { LCDHW_BackLight(true); backlight_on = true; }
                     LCD_GraphicClear();
                     LCD_TextOut(0, 0,  "==================");
                     LCD_TextOut(0, 16, "  Welcome User!   ");
@@ -178,10 +198,7 @@ int main() {
 
                 case HW_FSM_MSG: {
                     int safe_idx = (hw_msg_index < MSG_COUNT) ? hw_msg_index : 0;
-                    if (!backlight_on) {
-                        LCDHW_BackLight(true);
-                        backlight_on = true;
-                    }
+                    if (!backlight_on) { LCDHW_BackLight(true); backlight_on = true; }
                     LCD_GraphicClear();
                     LCD_TextOut(0, 0,  (char*)MSG_LIST[safe_idx][0]);
                     LCD_TextOut(0, 16, (char*)MSG_LIST[safe_idx][1]);
@@ -192,29 +209,28 @@ int main() {
 
                 case HW_FSM_SLEEP:
                     LCD_GraphicClear();
-                    if (backlight_on) {
-                        LCDHW_BackLight(false);
-                        backlight_on = false;
-                    }
+                    if (backlight_on) { LCDHW_BackLight(false); backlight_on = false; }
                     break;
 
                 default:
-                    if (!backlight_on) {
-                        LCDHW_BackLight(true);
-                        backlight_on = true;
-                    }
+                    if (!backlight_on) { LCDHW_BackLight(true); backlight_on = true; }
                     LCD_GraphicClear();
                     LCD_TextOut(0, 16, "  FSM ERROR STATE ");
+                    // FIXED: latch the error so it doesn't redraw every loop
+                    if (last_warn_code != 3) {
+                        printf("[WARN] Unknown FSM state value=%d\n", hw_fsm_state);
+                        last_warn_code = 3;
+                    }
                     break;
             }
 
-            last_hw_state = hw_fsm_state;
+            last_hw_state     = hw_fsm_state;
             last_hw_msg_index = hw_msg_index;
         }
-        
-        usleep(20000);  // 20ms polling interval (FPGA handles debouncing)
+
+        usleep(5000);  // 5ms poll — meets latency budget after FPGA debounce reduction
     }
-    
-    close(fd);
+
+    cleanup();         // NEW: always release resources
     return 0;
 }

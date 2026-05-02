@@ -429,11 +429,11 @@ assign LEDR[0]=led_level;
 
 // ============================================================================
 // Custom LCD Message Controller
-// Integrates: debouncer (50ms) + edge detector + idle timer + HEX display
+// Integrates: debouncer (20ms) + edge detector + idle timer + HEX display
 // ============================================================================
 fpga_msg_controller #(
     .CLK_FREQ_HZ (50_000_000),
-    .DEBOUNCE_MS (50),
+    .DEBOUNCE_MS (20),
     .TIMEOUT_SEC (15),
     .NUM_BUTTONS (4)
 ) u_msg_ctrl (

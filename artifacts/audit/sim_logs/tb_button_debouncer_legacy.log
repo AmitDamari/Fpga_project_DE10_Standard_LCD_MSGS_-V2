@@ -1,0 +1,4 @@
+DID-NOT-RUN: iverilog and vvp not found in PATH.
+Run (legacy suites):
+  $env:RUN_LEGACY=1; powershell -File sim/run_all_sim.ps1
+Pass criterion: output contains "ALL SIMULATION SUITES PASSED" and includes tb_button_debouncer_legacy.

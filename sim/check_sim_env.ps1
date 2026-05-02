@@ -5,6 +5,28 @@
 
 $ErrorActionPreference = "Continue"
 
+function Add-ToolPathIfPresent {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ToolBinPath
+    )
+
+    if (-not (Test-Path $ToolBinPath)) {
+        return
+    }
+
+    $pathEntries = $env:Path -split ';'
+    if ($pathEntries -contains $ToolBinPath) {
+        return
+    }
+
+    $env:Path = "$ToolBinPath;" + $env:Path
+    Write-Host "[INFO] Added to PATH for this shell: $ToolBinPath" -ForegroundColor Cyan
+}
+
+# Common local install location on this project environment.
+Add-ToolPathIfPresent -ToolBinPath "C:\iverilog\bin"
+
 Write-Host ""
 Write-Host "============================================================" -ForegroundColor Cyan
 Write-Host "  Simulation Environment Preflight" -ForegroundColor Cyan
@@ -28,6 +50,13 @@ if ($vvpCmd) {
 } else {
     Write-Host "[MISSING] vvp" -ForegroundColor Red
     $missing += "vvp"
+}
+
+$questaExe = "C:\intelFPGA_lite\21.1\questa_fse\win64\vsim.exe"
+if (Test-Path $questaExe) {
+    Write-Host "[OK] Quartus-bundled Questa found: $questaExe" -ForegroundColor Green
+} else {
+    Write-Host "[INFO] Quartus-bundled Questa not found at default path." -ForegroundColor Yellow
 }
 
 Write-Host ""

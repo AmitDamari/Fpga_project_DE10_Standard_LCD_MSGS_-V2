@@ -17,6 +17,9 @@ This report maps requirements to simulations and records expected evidence for s
 | R5 Top-level wiring | sim/testbenches/tb_top_level.v | LED/HEX wiring and timeout behavior pass |
 | V3 Clock utility quality | sim/testbenches/tb_clock_divider.v | 1s tick observed; strict count and pulse-width checks pass |
 | V4 Regression execution | sim/run_all_sim.ps1 | Single summary reports all suites passed |
+| Waveform structural checks | sim/run_wave_analysis.ps1 | Auto-generated report verifies pulse width, timeout edge, and FSM state coverage from VCD |
+| Quartus 21.1 Questa regression | sim/run_quartus_questa_sim.ps1 | Canonical suites run under Quartus-bundled Questa with transcript log |
+| Pre-board full verification gate | sim/run_pre_board_verification.ps1 | One command executes regression, waveform checks, event extraction, and Quartus netlist compatibility |
 
 ## Test Execution Checklist
 

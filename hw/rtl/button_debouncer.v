@@ -5,12 +5,12 @@
 //              synchronizer for metastability protection.
 //              Input: active-LOW buttons (DE10-Standard KEY pins)
 //              Output: active-HIGH debounced signals
-// Default: 50ms debounce at 50 MHz clock
+// Default: 20ms debounce at 50 MHz clock
 // ============================================================================
 
 module button_debouncer #(
     parameter CLK_FREQ_HZ  = 50_000_000,  // System clock frequency
-    parameter DEBOUNCE_MS  = 50,           // Debounce settling time in ms
+    parameter DEBOUNCE_MS  = 20,           // Debounce settling time in ms
     parameter NUM_BUTTONS  = 4             // Number of button channels
 )(
     input  wire                    clk,
