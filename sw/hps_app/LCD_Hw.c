@@ -34,6 +34,19 @@
 #define alt_clrbits_word(addr, bits) (*(volatile uint32_t *)(addr) &= ~(bits))
 
 static void *lcd_virtual_base = NULL;
+static const uint32_t SPIM_WAIT_MAX_ITER = 1000000u;
+
+static bool SPIM_WaitStatusBits(uint32_t spim0_addr, uint32_t mask, bool wait_set) {
+    for (uint32_t i = 0; i < SPIM_WAIT_MAX_ITER; i++) {
+        uint32_t sr = alt_read_word(spim0_addr + SPIM_SR);
+        if (wait_set) {
+            if ((sr & mask) == mask) return true;
+        } else {
+            if ((sr & mask) == 0) return true;
+        }
+    }
+    return false;
+}
 
 void LCDHW_Init(void *virtual_base) {
     lcd_virtual_base = virtual_base;
@@ -60,8 +73,10 @@ void LCDHW_Init(void *virtual_base) {
     alt_clrbits_word(spim0_addr + SPIM_SSIENR, 1);
 
     uint32_t ctrl0 = alt_read_word(spim0_addr + SPIM_CTLR0);
-    ctrl0 &= ~(0x3 << 8);
-    ctrl0 |= (1 << 8);
+    ctrl0 &= ~0xF;          // DFS[3:0]
+    ctrl0 |= 0x7;           // 8-bit transfers (DFS = 7)
+    ctrl0 &= ~(0x3 << 8);   // TMOD[9:8]
+    ctrl0 |= (1 << 8);      // Transmit-only mode
     alt_write_word(spim0_addr + SPIM_CTLR0, ctrl0);
 
     alt_write_word(spim0_addr + SPIM_BAUDR, 64);
@@ -84,10 +99,23 @@ void LCDHW_BackLight(bool bON) {
 static void SPIM_WriteTxData(uint8_t Data) {
     uint32_t spim0_addr = (uint32_t)lcd_virtual_base + SPIM0_BASE_OFFSET;
 
-    while (!(alt_read_word(spim0_addr + SPIM_SR) & 0x4));
+    if (!SPIM_WaitStatusBits(spim0_addr, 0x4, true)) {
+        printf("LCD SPI timeout before TX (SR=0x%08X)\n", alt_read_word(spim0_addr + SPIM_SR));
+        return;
+    }
+
     alt_write_word(spim0_addr + SPIM_DR, Data);
-    while (!(alt_read_word(spim0_addr + SPIM_SR) & 0x4));
-    while (alt_read_word(spim0_addr + SPIM_SR) & 0x1);
+
+    if (!SPIM_WaitStatusBits(spim0_addr, 0x4, true)) {
+        printf("LCD SPI timeout after TX-ready check (SR=0x%08X, Data=0x%02X)\n",
+               alt_read_word(spim0_addr + SPIM_SR), Data);
+        return;
+    }
+
+    if (!SPIM_WaitStatusBits(spim0_addr, 0x1, false)) {
+        printf("LCD SPI timeout waiting BUSY clear (SR=0x%08X, Data=0x%02X)\n",
+               alt_read_word(spim0_addr + SPIM_SR), Data);
+    }
 }
 
 static void PIO_DC_Set(bool bIsData) {
